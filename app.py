@@ -17,7 +17,7 @@ from PIL import Image
 from google import genai
 from google.genai import types
 from datetime import datetime
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, render_template
 from TikTokLive import TikTokLiveClient
 from TikTokLive.events import CommentEvent, ConnectEvent, JoinEvent, GiftEvent, FollowEvent, PollEvent
 from colorama import init, Cursor, Fore, Style
@@ -50,6 +50,10 @@ def force_jack(mode_id):
     if stream_manager:
         return stream_manager.trigger_manual_jack(mode_id)
     return jsonify({"status": "error"}), 500
+
+@app.route('/controller')
+def controller():
+    return render_template('controller.html', personalities=stream_manager.personality_library)
 
 @app.route('/')
 def index():
@@ -109,11 +113,6 @@ def index():
                     font-weight: bold;
                     white-space: nowrap; /* 文字の折り返しを防ぐ */
                 }
-                /* ボタンごとの色指定はそのまま */
-                .btn-normal { background: #f0f0f0; }
-                .btn-gal { background: #ff85ff; color: white; border: none; }
-                .btn-samurai { background: #ffcc00; border: none; }
-                .btn-nechi { background: #a0a0a0; color: white; border: none; }
             </style>
         </head>
         <body>
@@ -122,14 +121,8 @@ def index():
                     <div class="card card-mode">
                         <div class="card-content">
                             <div class="status-info">
-                                <div style="font-size: 0.9em; color: #888;">モード</div>
+                                <div style="font-size: 0.9em; color: #888;" onclick="openController()" >モード</div>
                                 <div id="mode" class="mode-name" style="margin-top: 5px; font-size: 1.4em;">--</div>
-                            </div>
-                            <div class="btn-group">
-                                <button class="btn-normal" onclick="forceJack('normal')">通常</button>
-                                <button class="btn-gal" onclick="forceJack('gal')">ギャル</button>
-                                <button class="btn-samurai" onclick="forceJack('samurai')">侍</button>
-                                <button class="btn-nechi" onclick="forceJack('nechinechi')">小姑</button>
                             </div>
                         </div>
                     </div>
@@ -170,6 +163,10 @@ def index():
                     } catch(e) { console.error(e); }
                 }
                 setInterval(update, 1000);
+                function openController() {
+                    // 小さなウィンドウとして開く
+                    window.open('/controller', 'JackController', 'width=400, height=600');
+                }
             </script>
         </body>
         </html>
@@ -214,11 +211,12 @@ class MinecraftCapturer:
 
             # 3. 指定範囲をキャプチャ
             sct_img = self.sct.grab(monitor)
-            
+
+
             # 画像処理 (BGRXからRGBへ変換し、API用にリサイズ)
             img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
             img = img.resize((640, 360))
-            
+
             # バイトデータを返す
             buf = io.BytesIO()
             img.save(buf, format='JPEG')
@@ -291,6 +289,8 @@ class VoicevoxOutput:
                 pygame.mixer.music.play()
                 while pygame.mixer.music.get_busy(): time.sleep(0.05)
                 time.sleep(0.3) #文末の間
+        except Exception as e:
+            self.add_log(f"❌ TTS Error: {e}")
         finally:
             self.is_speaking = False
 
@@ -369,8 +369,6 @@ class StreamManager:
         return jsonify({"status": "error"}), 400
     
     def debug_input_loop(self):
-        """コンソールから手動でイベントを発生させる"""
-        self.add_log("Debug Mode: Type 'rose', 'heart', or 'ice' to simulate gifts.")
         while True:
             # 標準入力で待ち受け
             cmd = sys.stdin.readline().strip().lower()
@@ -461,13 +459,12 @@ class StreamManager:
                     # フラグを立てて、二重にスレッドが立つのを防ぐ
                     self.is_generating = True
                     # 【重要】生成処理を非同期（Thread）で実行
-                    # これにより、この下の time.sleep(1.0) まで即座に到達する
                     threading.Thread(
                         target=self.process_ai_task, 
                         args=(frame, sys_prompt, speed_instruction, current_context),
                         daemon=True
                     ).start()
-                        
+
             time.sleep(0.1)
 
     def process_ai_task(self, frame, sys_prompt, speed_instruction, context):
@@ -484,6 +481,7 @@ class StreamManager:
         finally:
             # 成功しても失敗しても、最後に必ずフラグを折る
             self.is_generating = False
+
     def build_system_prompt(self, mode_id):
         """モードに応じて人格の『土台』を動的に生成する"""
         config = self.personality_library.get(mode_id, self.personality_library["normal"])
@@ -561,7 +559,7 @@ if __name__ == "__main__":
     # 設定値
     API_KEY = os.getenv("API_KEY")
 
-    TIKTOK_UNIQUE_ID=os.getenv("TIKTOK_UNIQUE_ID")
+    TIKTOK_UNIQUE_ID = os.getenv("TIKTOK_UNIQUE_ID")
     client = TikTokLiveClient(unique_id=TIKTOK_UNIQUE_ID)
     
     # インスタンス化
