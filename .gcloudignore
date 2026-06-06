@@ -1,0 +1,13 @@
+.git
+.gitignore
+.pytest_cache
+__pycache__/
+*.py[cod]
+.env
+.tools/
+.venv/
+venv/
+captured_images/
+tests/
+local_agent/
+README.md

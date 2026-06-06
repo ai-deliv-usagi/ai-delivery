@@ -7,7 +7,27 @@ __pycache__/
 .ruff_cache/
 
 .env
+.env.*
+!.env.example
+.tools/
 .venv/
 venv/
 
 captured_images/
+
+infra/terraform/.terraform/
+infra/terraform/terraform.tfvars
+infra/terraform/*.auto.tfvars
+infra/terraform/*.auto.tfvars.json
+infra/terraform/*override.tf
+infra/terraform/*override.tf.json
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfplan
+infra/terraform/crash.log
+infra/terraform/crash.*.log
+
+*.pem
+*.key
+*.p12
+*.jsonl
