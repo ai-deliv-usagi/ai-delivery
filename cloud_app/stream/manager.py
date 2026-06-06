@@ -8,6 +8,9 @@ from cloud_app.dashboard.state import add_log, dashboard_data
 from cloud_app.personalities.library import GIFT_TO_MODE, PERSONALITY_LIBRARY
 
 
+SPEED_INSTRUCTION = "\nSpeak in one short response."
+
+
 class StreamManager:
     def __init__(self, capturer, ai, voice, tiktok):
         self.capturer = capturer
@@ -23,6 +26,7 @@ class StreamManager:
         self.gift_queue = []
         self.pending_context = ""
         self.current_gen_id = 0
+        self.is_generating = False
 
     def add_log(self, msg):
         add_log(msg)
@@ -63,14 +67,15 @@ class StreamManager:
                     {"type": "comment", "user": "DebugUser", "text": "hello"}
                 )
 
-    def run(self, flask_app=None, port=5000):
+    def run(self, flask_app=None, port=5000, enable_debug_input=False):
         if flask_app is not None:
             threading.Thread(
                 target=lambda: flask_app.run(port=port, debug=False, use_reloader=False),
                 daemon=True,
             ).start()
         threading.Thread(target=self.tiktok.run_forever, daemon=True).start()
-        threading.Thread(target=self.debug_input_loop, daemon=True).start()
+        if enable_debug_input:
+            threading.Thread(target=self.debug_input_loop, daemon=True).start()
 
         while True:
             self.tick()
@@ -78,80 +83,96 @@ class StreamManager:
 
     def tick(self):
         now = time.time()
-        events = self.tiktok.fetch_events()
+        self.handle_events(self.tiktok.fetch_events())
+        self.update_mode(now)
 
+        active_id = self.get_active_mode_id(now)
+        self.update_dashboard(active_id, now)
+        self.start_generation_if_ready(active_id)
+
+    def handle_events(self, events):
         for event in events:
-            if event["type"] == "comment":
+            event_type = event["type"]
+            if event_type == "comment":
                 self.pending_context += f"\n# {event['user']} comment: {event['text']}"
-
-            elif event["type"] == "gift":
-                gift_name = event["gift_name"]
-                if gift_name in self.gift_to_mode:
-                    mode_id = self.gift_to_mode[gift_name]
-                    self.gift_queue.append((mode_id, event["user"], gift_name))
-                    self.add_log(f"Gift queued: {gift_name} ({event['user']})")
-                    mode_name = self.personality_library[mode_id]["name"]
-                    self.pending_context += (
-                        f"\n# Important: {event['user']} sent {gift_name}. "
-                        f"Announce that the next mode is {mode_name}."
-                    )
-                else:
-                    self.add_log(f"Gift: {event['user']} sent {gift_name}")
-                    self.pending_context += (
-                        f"\n# {event['user']} sent {gift_name}. Thank them briefly."
-                    )
-
-            elif event["type"] == "join_bulk":
+            elif event_type == "gift":
+                self.handle_gift_event(event)
+            elif event_type == "join_bulk":
                 self.pending_context += (
                     f"\n# {event['count']} viewers joined: {event['users']}."
                 )
-
-            elif event["type"] == "follow":
+            elif event_type == "follow":
                 self.pending_context += f"\n# New follower: {event['user']}. Thank them."
 
-        if not self.voice.is_speaking:
-            if now >= self.override_expiry and self.gift_queue:
-                next_mode, gift_user, _gift_name = self.gift_queue.pop(0)
-                self.override_mode_id = next_mode
-                self.override_expiry = now + 60
-                self.add_log(
-                    f">>> Mode switching: {self.personality_library[next_mode]['name']} "
-                    f"({gift_user})"
-                )
-                self.pending_context += (
-                    f"\n# System: switch personality to "
-                    f"{self.personality_library[next_mode]['name']}."
-                )
+    def handle_gift_event(self, event):
+        gift_name = event["gift_name"]
+        if gift_name not in self.gift_to_mode:
+            self.add_log(f"Gift: {event['user']} sent {gift_name}")
+            self.pending_context += (
+                f"\n# {event['user']} sent {gift_name}. Thank them briefly."
+            )
+            return
 
-            elif now >= self.override_expiry and self.override_mode_id:
-                self.add_log(">>> Mode jack finished. Returning to normal.")
-                self.pending_context += (
-                    f"\n# System: switch personality to "
-                    f"{self.personality_library['normal']['name']}."
-                )
-                self.override_mode_id = None
+        mode_id = self.gift_to_mode[gift_name]
+        self.gift_queue.append((mode_id, event["user"], gift_name))
+        self.add_log(f"Gift queued: {gift_name} ({event['user']})")
+        mode_name = self.personality_library[mode_id]["name"]
+        self.pending_context += (
+            f"\n# Important: {event['user']} sent {gift_name}. "
+            f"Announce that the next mode is {mode_name}."
+        )
 
-        active_id = self.override_mode_id if now < self.override_expiry else self.tiktok.current_patch_id
+    def update_mode(self, now):
+        if self.voice.is_speaking:
+            return
+
+        if now >= self.override_expiry and self.gift_queue:
+            self.activate_next_gift_mode(now)
+        elif now >= self.override_expiry and self.override_mode_id:
+            self.return_to_normal_mode()
+
+    def activate_next_gift_mode(self, now):
+        next_mode, gift_user, _gift_name = self.gift_queue.pop(0)
+        self.override_mode_id = next_mode
+        self.override_expiry = now + 60
+        mode_name = self.personality_library[next_mode]["name"]
+        self.add_log(f">>> Mode switching: {mode_name} ({gift_user})")
+        self.pending_context += f"\n# System: switch personality to {mode_name}."
+
+    def return_to_normal_mode(self):
+        mode_name = self.personality_library["normal"]["name"]
+        self.add_log(">>> Mode jack finished. Returning to normal.")
+        self.pending_context += f"\n# System: switch personality to {mode_name}."
+        self.override_mode_id = None
+
+    def get_active_mode_id(self, now):
+        if self.override_mode_id and now < self.override_expiry:
+            return self.override_mode_id
+        return self.tiktok.current_patch_id
+
+    def update_dashboard(self, active_id, now):
         config = self.personality_library.get(active_id, self.personality_library["normal"])
-
         dashboard_data["active_mode"] = config["name"]
         dashboard_data["timer"] = int(max(0, self.override_expiry - now))
         dashboard_data["queue"] = self.gift_queue
 
-        if not self.voice.is_speaking and not getattr(self, "is_generating", False):
-            frame = self.capturer.get_frame_bytes()
-            if frame:
-                sys_prompt = self.build_system_prompt(active_id)
-                speed_instruction = "\nSpeak in one short response."
-                current_context = self.pending_context
-                self.pending_context = ""
+    def start_generation_if_ready(self, active_id):
+        if self.voice.is_speaking or self.is_generating:
+            return
 
-                self.is_generating = True
-                threading.Thread(
-                    target=self.process_ai_task,
-                    args=(frame, sys_prompt, speed_instruction, current_context),
-                    daemon=True,
-                ).start()
+        frame = self.capturer.get_frame_bytes()
+        if not frame:
+            return
+
+        sys_prompt = self.build_system_prompt(active_id)
+        current_context = self.pending_context
+        self.pending_context = ""
+        self.is_generating = True
+        threading.Thread(
+            target=self.process_ai_task,
+            args=(frame, sys_prompt, SPEED_INSTRUCTION, current_context),
+            daemon=True,
+        ).start()
 
     def process_ai_task(self, frame, sys_prompt, speed_instruction, context):
         try:

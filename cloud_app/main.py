@@ -6,7 +6,6 @@ from flask import Flask
 
 from cloud_app.ai.gemini_commentator import AICommentator
 from cloud_app.dashboard.routes import register_routes
-from cloud_app.dashboard.state import dashboard_data
 from cloud_app.frames import FrameStore
 from cloud_app.stream.manager import StreamManager
 from cloud_app.tiktok.listener import TikTokListener
@@ -45,9 +44,13 @@ def main():
     global stream_manager
     stream_manager = create_stream_manager()
     port = int(os.getenv("PORT", "5000"))
-    stream_manager.run(flask_app=app, port=port)
+    enable_debug_input = os.getenv("ENABLE_DEBUG_INPUT", "").lower() in {"1", "true", "yes"}
+    stream_manager.run(
+        flask_app=app,
+        port=port,
+        enable_debug_input=enable_debug_input,
+    )
 
 
 if __name__ == "__main__":
     main()
-
