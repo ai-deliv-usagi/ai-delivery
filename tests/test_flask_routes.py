@@ -1,3 +1,4 @@
+import io
 import types
 
 
@@ -61,3 +62,46 @@ def test_controller_renders_personality_buttons(app_module, client):
     assert "Normal OS" in response.get_data(as_text=True)
     assert "Gal OS" in response.get_data(as_text=True)
 
+
+def test_session_start_delegates_to_stream_manager(app_module, client):
+    app_module.stream_manager = types.SimpleNamespace(start_session=lambda: {"status": "started"})
+
+    response = client.post("/api/session/start")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "started"}
+
+
+def test_session_stop_delegates_to_stream_manager(app_module, client):
+    app_module.stream_manager = types.SimpleNamespace(stop_session=lambda: {"status": "stopped"})
+
+    response = client.post("/api/session/stop")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "stopped"}
+
+
+def test_receive_frame_returns_audio_base64_when_generated(app_module, client):
+    app_module.stream_manager = types.SimpleNamespace(
+        process_frame=lambda frame: {
+            "status": "ok",
+            "comment": "hello",
+            "audio": b"wav-bytes",
+            "audio_content_type": "audio/wav",
+        }
+    )
+
+    response = client.post(
+        "/api/frames",
+        data={"frame": (io.BytesIO(b"frame"), "frame.jpg")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "status": "ok",
+        "comment": "hello",
+        "audio_base64": "d2F2LWJ5dGVz",
+        "audio_content_type": "audio/wav",
+        "audio_encoding": "base64",
+    }

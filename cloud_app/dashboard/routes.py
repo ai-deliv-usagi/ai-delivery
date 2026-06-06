@@ -1,3 +1,5 @@
+import base64
+
 from flask import jsonify, render_template, render_template_string, request
 
 from cloud_app.dashboard.state import dashboard_data
@@ -15,17 +17,40 @@ def register_routes(app, get_stream_manager, frame_store=None):
             return stream_manager.trigger_manual_jack(mode_id)
         return jsonify({"status": "error"}), 500
 
+    @app.route("/api/session/start", methods=["POST"])
+    def start_session():
+        stream_manager = get_stream_manager()
+        if not stream_manager:
+            return jsonify({"status": "error", "message": "stream manager is unavailable"}), 500
+        return jsonify(stream_manager.start_session())
+
+    @app.route("/api/session/stop", methods=["POST"])
+    def stop_session():
+        stream_manager = get_stream_manager()
+        if not stream_manager:
+            return jsonify({"status": "error", "message": "stream manager is unavailable"}), 500
+        return jsonify(stream_manager.stop_session())
+
     @app.route("/api/frames", methods=["POST"])
     def receive_frame():
-        if frame_store is None:
-            return jsonify({"status": "disabled"}), 503
-
         uploaded = request.files.get("frame")
         if uploaded is None:
             return jsonify({"status": "error", "message": "frame is required"}), 400
 
-        frame_store.put(uploaded.read())
-        return jsonify({"status": "accepted"})
+        frame = uploaded.read()
+        if frame_store is not None:
+            frame_store.put(frame)
+
+        stream_manager = get_stream_manager()
+        if not stream_manager:
+            return jsonify({"status": "accepted"})
+
+        result = stream_manager.process_frame(frame)
+        audio = result.pop("audio", None)
+        if audio:
+            result["audio_base64"] = base64.b64encode(audio).decode("ascii")
+            result["audio_encoding"] = "base64"
+        return jsonify(result)
 
     @app.route("/controller")
     def controller():
@@ -95,4 +120,3 @@ def register_routes(app, get_stream_manager, frame_store=None):
             </html>
             """
         )
-

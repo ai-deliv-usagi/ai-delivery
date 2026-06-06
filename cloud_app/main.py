@@ -21,6 +21,9 @@ stream_manager = None
 
 
 def get_stream_manager():
+    global stream_manager
+    if stream_manager is None:
+        stream_manager = create_stream_manager()
     return stream_manager
 
 
@@ -41,11 +44,9 @@ def create_stream_manager():
 
 
 def main():
-    global stream_manager
-    stream_manager = create_stream_manager()
     port = int(os.getenv("PORT", "5000"))
     enable_debug_input = os.getenv("ENABLE_DEBUG_INPUT", "").lower() in {"1", "true", "yes"}
-    stream_manager.run(
+    get_stream_manager().run(
         flask_app=app,
         port=port,
         enable_debug_input=enable_debug_input,
