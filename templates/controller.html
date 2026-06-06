@@ -92,6 +92,55 @@
             background: linear-gradient(145deg, #374151, #4b5563); /* グラデ反転 */
             box-shadow: 0 0 10px rgba(100, 100, 100, 0.3);
         }
+        /* ツンデレ: ツインテール風（？）なオレンジ・ピンク */
+        .btn-tsundere {
+            background: linear-gradient(145deg, #ff9966, #ff5e62);
+            border-color: #ffcccc;
+            color: white;
+        }
+
+        /* 熱血: 燃え上がる炎の赤 */
+        .btn-nekketsu {
+            background: linear-gradient(145deg, #ff416c, #ff4b2b);
+            border-color: #ffd700;
+            color: white;
+            box-shadow: 0 0 15px rgba(255, 65, 108, 0.4);
+        }
+
+        /* 虚無: 宇宙の深淵のようなパープル・ネイビー */
+        .btn-kyomu {
+            background: linear-gradient(145deg, #2c3e50, #000000);
+            border-color: #4a4e69;
+            color: #9ca3af;
+        }
+
+        /* ハッカー: マトリックス風グリーン */
+        .btn-hacker {
+            background: #000;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 5px #00ff00;
+        }
+        .btn-hacker:hover {
+            box-shadow: 0 0 15px #00ff00;
+        }
+        /* 猫OS: 三毛猫（白・オレンジ・黒）のドット柄イメージ */
+        .btn-neko {
+            background: radial-gradient(circle at 20% 20%, #ff9800 20%, transparent 20%),
+                        radial-gradient(circle at 80% 80%, #333 20%, transparent 20%),
+                        #fff;
+            border: 3px solid #ffb74d;
+            color: #5d4037;
+            font-weight: 900;
+            position: relative;
+        }
+
+        /* ホバー時に肉球が出るような演出（気分だけ） */
+        .btn-neko:hover {
+            background-color: #fff9f0;
+            box-shadow: 0 0 20px rgba(255, 152, 0, 0.4);
+        }
     </style>
 </head>
 <body class="p-5 select-none antialiased">
@@ -104,7 +153,7 @@
     <div class="grid grid-cols-2 gap-5">
         {% for id, config in personalities.items() %}
         <button onclick="triggerJack('{{ id }}')" 
-                class="btn-rich h-28 flex flex-col items-center justify-center p-4 rounded-xl shadow-2xl font-extrabold text-center group btn-{{ id }}">
+                class="btn-rich h-14 flex flex-col items-center justify-center p-4 rounded-xl shadow-2xl font-extrabold text-center group btn-{{ id }}">
             
             <span class="text-xl tracking-tight">{{ config.name }}</span>
 
