@@ -494,13 +494,13 @@ class StreamManager:
                     next_mode, g_user, g_name = self.gift_queue.pop(0)
                     self.override_mode_id = next_mode
                     self.override_expiry = now + 60
-                    self.add_log(f">>> モード切替中: {self.personality_library[next_mode]["name"]} (ジャック者：{g_user})")
+                    self.add_log(f">>> モード切替中: {self.personality_library[next_mode]['name']} (ジャック者：{g_user})")
                     self.pending_context += f"\n# 【システム】ここから人格を「{self.personality_library[next_mode]['name']}」に切り替えろ。"                
                 
                 # 2. ジャック期間が終了したか？
                 elif now >= self.override_expiry and self.override_mode_id:
                     self.add_log(">>> ジャック終了。標準OSに戻ります")
-                    self.pending_context += f"\n# 【システム】ここから人格を「{self.personality_library["normal"]['name']}」に切り替えろ。"
+                    self.pending_context += f"\n# 【システム】ここから人格を「{self.personality_library['normal']['name']}」に切り替えろ。"
                     self.override_mode_id = None
 
             # --- C. ダッシュボードデータの更新（常に最新を反映） ---
