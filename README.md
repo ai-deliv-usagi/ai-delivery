@@ -7,22 +7,27 @@ The cloud side is intended to run on Cloud Run:
 - `ai-delivery-app`: Flask dashboard, Gemini commentary, TikTok listener, frame API
 - `ai-delivery-voicevox`: VOICEVOX Engine
 - Cloud Storage bucket: generated audio files
-- Secret Manager: `API_KEY` and `TIKTOK_UNIQUE_ID`
+- Secret Manager: `API_KEY`
 
 Terraform lives in `infra/terraform`.
 
 ```powershell
 $env:API_KEY = "your-gemini-api-key"
-$env:TIKTOK_UNIQUE_ID = "@your_tiktok_id"
 
 .\scripts\deploy-gcp.ps1 `
   -ProjectId "gen-lang-client-0496284195" `
-  -Region "asia-northeast1"
+  -Region "asia-northeast1" `
+  -TiktokUniqueId "@your_tiktok_id"
 ```
 
 The deploy script applies Terraform first, adds Secret Manager versions from
 environment variables, then deploys the app to Cloud Run from local source using
 Cloud Build.
+
+Secret values are not managed by Terraform. Terraform and the deploy script only
+ensure that the `ai-delivery-api-key` secret exists. Set the actual Gemini API
+key by either exporting `API_KEY` before deployment or by manually adding a
+Secret Manager version.
 
 ## Streaming flow
 
@@ -95,8 +100,8 @@ the account a role such as `Service Usage Admin`.
 
 ### Secret not found
 
-`set-gcp-secrets.ps1` is mainly for updating existing Secret Manager values. If
-you run it before Terraform creates the secrets, you may see:
+`set-gcp-secrets.ps1` updates the `ai-delivery-api-key` Secret Manager value. If
+the secret does not exist, the script creates it first.
 
 ```text
 Secret ... ai-delivery-api-key not found
@@ -112,9 +117,16 @@ Then update secret values when needed:
 
 ```powershell
 $env:API_KEY = "your-gemini-api-key"
-$env:TIKTOK_UNIQUE_ID = "@your_tiktok_id"
 .\scripts\set-gcp-secrets.ps1 -ProjectId "gen-lang-client-0496284195"
 ```
+
+`TIKTOK_UNIQUE_ID` is not stored in Secret Manager. Set it in
+`infra/terraform/terraform.tfvars` as `tiktok_unique_id`, or pass
+`-TiktokUniqueId` to `deploy-gcp.ps1`.
+
+Terraform intentionally does not manage Secret Manager versions. This prevents a
+dummy value such as `CHANGE_ME` from becoming the latest secret version after a
+future `terraform apply`.
 
 ### PowerShell and Terraform `-chdir`
 

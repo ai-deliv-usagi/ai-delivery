@@ -9,9 +9,42 @@ locals {
 
   app_env = {
     GEMINI_MODEL_ID     = var.gemini_model_id
+    TIKTOK_UNIQUE_ID    = var.tiktok_unique_id
     VOICEVOX_SPEAKER_ID = tostring(var.voicevox_speaker_id)
     VOICEVOX_URL        = google_cloud_run_v2_service.voicevox.uri
     AUDIO_BUCKET_NAME   = google_storage_bucket.audio.name
+  }
+}
+
+removed {
+  from = google_secret_manager_secret.api_key
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_secret_manager_secret_version.api_key_bootstrap
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_secret_manager_secret.tiktok_unique_id
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = google_secret_manager_secret_version.tiktok_unique_id_bootstrap
+
+  lifecycle {
+    destroy = false
   }
 }
 
@@ -48,36 +81,6 @@ resource "google_storage_bucket" "audio" {
   }
 
   depends_on = [google_project_service.required]
-}
-
-resource "google_secret_manager_secret" "api_key" {
-  secret_id = "ai-delivery-api-key"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [google_project_service.required]
-}
-
-resource "google_secret_manager_secret" "tiktok_unique_id" {
-  secret_id = "ai-delivery-tiktok-unique-id"
-
-  replication {
-    auto {}
-  }
-
-  depends_on = [google_project_service.required]
-}
-
-resource "google_secret_manager_secret_version" "api_key_bootstrap" {
-  secret      = google_secret_manager_secret.api_key.id
-  secret_data = "CHANGE_ME"
-}
-
-resource "google_secret_manager_secret_version" "tiktok_unique_id_bootstrap" {
-  secret      = google_secret_manager_secret.tiktok_unique_id.id
-  secret_data = "CHANGE_ME"
 }
 
 resource "google_service_account" "app" {
@@ -161,17 +164,7 @@ resource "google_cloud_run_v2_service" "app" {
         name = "API_KEY"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.api_key.secret_id
-            version = "latest"
-          }
-        }
-      }
-
-      env {
-        name = "TIKTOK_UNIQUE_ID"
-        value_source {
-          secret_key_ref {
-            secret  = google_secret_manager_secret.tiktok_unique_id.secret_id
+            secret  = var.api_key_secret_id
             version = "latest"
           }
         }
@@ -189,8 +182,6 @@ resource "google_cloud_run_v2_service" "app" {
   depends_on = [
     google_project_iam_member.app_secret_accessor,
     google_storage_bucket_iam_member.app_audio_admin,
-    google_secret_manager_secret_version.api_key_bootstrap,
-    google_secret_manager_secret_version.tiktok_unique_id_bootstrap,
     google_cloud_run_v2_service.voicevox,
   ]
 }

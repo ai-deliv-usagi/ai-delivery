@@ -26,14 +26,8 @@ if (-not $env:API_KEY) {
     throw "Set API_KEY in the current shell before running this script."
 }
 
-if (-not $env:TIKTOK_UNIQUE_ID) {
-    throw "Set TIKTOK_UNIQUE_ID in the current shell before running this script."
-}
-
 Ensure-Secret -ProjectId $ProjectId -SecretId "ai-delivery-api-key"
-Ensure-Secret -ProjectId $ProjectId -SecretId "ai-delivery-tiktok-unique-id"
 
 $env:API_KEY | gcloud secrets versions add ai-delivery-api-key --project=$ProjectId --data-file=-
-$env:TIKTOK_UNIQUE_ID | gcloud secrets versions add ai-delivery-tiktok-unique-id --project=$ProjectId --data-file=-
 
-Write-Host "Secret versions added."
+Write-Host "API_KEY secret version added."

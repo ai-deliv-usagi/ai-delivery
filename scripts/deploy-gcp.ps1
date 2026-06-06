@@ -5,6 +5,7 @@ param(
     [string]$VoicevoxServiceName = "ai-delivery-voicevox",
     [string]$AudioBucketName = "",
     [string]$GeminiModelId = "gemini-2.5-flash-lite",
+    [string]$TiktokUniqueId = "",
     [int]$VoicevoxSpeakerId = 63
 )
 
@@ -61,6 +62,28 @@ function Wait-ForGcpService($ProjectId, $Service) {
     throw "$Service was not enabled after waiting. Check Service Usage permissions."
 }
 
+function Ensure-Secret($ProjectId, $SecretId) {
+    gcloud secrets describe $SecretId --project=$ProjectId *> $null
+    if ($LASTEXITCODE -eq 0) {
+        return
+    }
+
+    Write-Host "Creating Secret Manager secret: $SecretId"
+    gcloud secrets create $SecretId --project=$ProjectId --replication-policy=automatic
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create Secret Manager secret: $SecretId"
+    }
+}
+
+function Test-SecretHasVersion($ProjectId, $SecretId) {
+    $versions = gcloud secrets versions list $SecretId `
+        --project=$ProjectId `
+        --filter="state:ENABLED" `
+        --format="value(name)" 2>$null
+
+    return -not [string]::IsNullOrWhiteSpace($versions)
+}
+
 Require-Command gcloud
 
 $terraformExe = "terraform"
@@ -83,6 +106,10 @@ if ([string]::IsNullOrWhiteSpace($AudioBucketName)) {
     $AudioBucketName = "$ProjectId-ai-delivery-audio"
 }
 
+if ([string]::IsNullOrWhiteSpace($TiktokUniqueId) -and $env:TIKTOK_UNIQUE_ID) {
+    $TiktokUniqueId = $env:TIKTOK_UNIQUE_ID
+}
+
 $terraformDir = (Resolve-Path (Join-Path $PSScriptRoot "..\infra\terraform")).Path
 $serviceAccount = "ai-delivery-app@$ProjectId.iam.gserviceaccount.com"
 
@@ -91,7 +118,37 @@ foreach ($service in $RequiredServices) {
     Wait-ForGcpService -ProjectId $ProjectId -Service $service
 }
 
+Ensure-Secret -ProjectId $ProjectId -SecretId "ai-delivery-api-key"
+if ($env:API_KEY) {
+    Write-Host "Adding API_KEY secret version..."
+    $env:API_KEY | gcloud secrets versions add ai-delivery-api-key --project=$ProjectId --data-file=-
+    if ($LASTEXITCODE -ne 0) {
+        throw "Adding API_KEY secret version failed."
+    }
+} elseif (-not (Test-SecretHasVersion -ProjectId $ProjectId -SecretId "ai-delivery-api-key")) {
+    throw "API_KEY is not set and ai-delivery-api-key has no enabled versions. Set API_KEY or add a Secret Manager version manually."
+} else {
+    Write-Host "Using existing API_KEY secret version."
+}
+
 Write-Host "Applying Terraform for project $ProjectId in $Region..."
+$terraformApplyArgs = @(
+    "-chdir=$terraformDir",
+    "apply",
+    "-auto-approve",
+    "-var=project_id=$ProjectId",
+    "-var=region=$Region",
+    "-var=app_service_name=$AppServiceName",
+    "-var=voicevox_service_name=$VoicevoxServiceName",
+    "-var=audio_bucket_name=$AudioBucketName",
+    "-var=gemini_model_id=$GeminiModelId",
+    "-var=voicevox_speaker_id=$VoicevoxSpeakerId"
+)
+
+if (-not [string]::IsNullOrWhiteSpace($TiktokUniqueId)) {
+    $terraformApplyArgs += "-var=tiktok_unique_id=$TiktokUniqueId"
+}
+
 Invoke-Checked `
     -Description "Terraform init" `
     -Command $terraformExe `
@@ -100,42 +157,16 @@ Invoke-Checked `
 Invoke-Checked `
     -Description "Terraform apply" `
     -Command $terraformExe `
-    -Arguments @(
-        "-chdir=$terraformDir",
-        "apply",
-        "-auto-approve",
-        "-var=project_id=$ProjectId",
-        "-var=region=$Region",
-        "-var=app_service_name=$AppServiceName",
-        "-var=voicevox_service_name=$VoicevoxServiceName",
-        "-var=audio_bucket_name=$AudioBucketName",
-        "-var=gemini_model_id=$GeminiModelId",
-        "-var=voicevox_speaker_id=$VoicevoxSpeakerId"
-    )
-
-if ($env:API_KEY) {
-    Write-Host "Adding API_KEY secret version..."
-    $env:API_KEY | gcloud secrets versions add ai-delivery-api-key --project=$ProjectId --data-file=-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Adding API_KEY secret version failed."
-    }
-} else {
-    Write-Warning "API_KEY is not set. Secret remains at bootstrap value CHANGE_ME."
-}
-
-if ($env:TIKTOK_UNIQUE_ID) {
-    Write-Host "Adding TIKTOK_UNIQUE_ID secret version..."
-    $env:TIKTOK_UNIQUE_ID | gcloud secrets versions add ai-delivery-tiktok-unique-id --project=$ProjectId --data-file=-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Adding TIKTOK_UNIQUE_ID secret version failed."
-    }
-} else {
-    Write-Warning "TIKTOK_UNIQUE_ID is not set. Secret remains at bootstrap value CHANGE_ME."
-}
+    -Arguments $terraformApplyArgs
 
 $voicevoxUrl = (& $terraformExe "-chdir=$terraformDir" output -raw voicevox_url).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($voicevoxUrl)) {
     throw "Could not read voicevox_url from Terraform output."
+}
+
+$tiktokUniqueIdOutput = (& $terraformExe "-chdir=$terraformDir" output -raw tiktok_unique_id).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tiktokUniqueIdOutput)) {
+    throw "Could not read tiktok_unique_id from Terraform output. Set tiktok_unique_id in terraform.tfvars or pass -TiktokUniqueId."
 }
 
 Invoke-Checked `
@@ -155,8 +186,8 @@ Invoke-Checked `
         "--memory=512Mi",
         "--cpu=1",
         "--timeout=3600",
-        "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,AUDIO_BUCKET_NAME=$AudioBucketName",
-        "--set-secrets=API_KEY=ai-delivery-api-key:latest,TIKTOK_UNIQUE_ID=ai-delivery-tiktok-unique-id:latest"
+        "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,TIKTOK_UNIQUE_ID=$tiktokUniqueIdOutput,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,AUDIO_BUCKET_NAME=$AudioBucketName",
+        "--set-secrets=API_KEY=ai-delivery-api-key:latest"
     )
 
 $appUrl = (gcloud run services describe $AppServiceName --project=$ProjectId --region=$Region --format="value(status.url)").Trim()
