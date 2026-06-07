@@ -9,6 +9,7 @@ from cloud_app.ai.gemini_commentator import AICommentator
 from cloud_app.dashboard.routes import register_routes
 from cloud_app.frames import FrameStore
 from cloud_app.stream.manager import StreamManager
+from cloud_app.stream.state_store import GcsStreamStateStore, NullStreamStateStore, SafeStreamStateStore
 from cloud_app.voice.voicevox import VoicevoxOutput
 
 load_dotenv()
@@ -41,11 +42,15 @@ def create_stream_manager():
     model_id = clean_env_value(os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash-lite"))
     voicevox_url = clean_env_value(os.getenv("VOICEVOX_URL", "http://127.0.0.1:50021"))
     voicevox_speaker_id = int(os.getenv("VOICEVOX_SPEAKER_ID", "63"))
+    audio_bucket_name = clean_env_value(os.getenv("AUDIO_BUCKET_NAME"))
 
     ai = AICommentator(api_key, model_id)
     voice = VoicevoxOutput(voicevox_url, voicevox_speaker_id)
     tiktok = types.SimpleNamespace(current_patch_id="normal")
-    return StreamManager(frame_store, ai, voice, tiktok)
+    state_store = NullStreamStateStore()
+    if audio_bucket_name:
+        state_store = SafeStreamStateStore(GcsStreamStateStore(audio_bucket_name))
+    return StreamManager(frame_store, ai, voice, tiktok, state_store=state_store)
 
 
 def main():

@@ -35,6 +35,11 @@ container boots. During an active session, it runs a lightweight background
 event loop so gift queues, jack expiry, and dashboard timers can advance without
 waiting for `/api/frames` or `/api/status`.
 
+Session state is persisted to Cloud Storage under `state/stream-session.json`.
+If the Cloud Run app instance is restarted during a stream, the next request can
+restore the active session flag, current jack mode, jack expiry, queued gifts,
+and pending viewer context.
+
 Create a local virtual environment for `local_agent`:
 
 ```powershell

@@ -13,11 +13,13 @@ SPEED_INSTRUCTION = "\n一言だけ、自然な日本語で短く話してくだ
 
 
 class StreamManager:
-    def __init__(self, capturer, ai, voice, tiktok):
+    def __init__(self, capturer, ai, voice, tiktok, state_store=None):
         self.capturer = capturer
         self.ai = ai
         self.voice = voice
         self.tiktok = tiktok
+        self.state_store = state_store
+        self._state_dirty = False
 
         self.personality_library = PERSONALITY_LIBRARY
         self.gift_to_mode = GIFT_TO_MODE
@@ -35,6 +37,7 @@ class StreamManager:
         self.tiktok_thread = None
         self.event_loop_thread = None
         self.event_loop_interval = 0.25
+        self.restore_state()
 
     @staticmethod
     def normalize_gift_name(gift_name):
@@ -42,6 +45,49 @@ class StreamManager:
 
     def add_log(self, msg):
         add_log(msg)
+
+    def snapshot_state(self):
+        return {
+            "session_active": self.session_active,
+            "override_mode_id": self.override_mode_id,
+            "override_expiry": self.override_expiry,
+            "gift_queue": self.gift_queue,
+            "pending_context": self.pending_context,
+            "current_gen_id": self.current_gen_id,
+        }
+
+    def restore_state(self):
+        if self.state_store is None:
+            return
+
+        state = self.state_store.load()
+        if not state:
+            return
+
+        self.session_active = bool(state.get("session_active", False))
+        self.override_mode_id = state.get("override_mode_id")
+        self.override_expiry = float(state.get("override_expiry") or 0)
+        self.gift_queue = [tuple(item) for item in state.get("gift_queue", [])]
+        self.pending_context = state.get("pending_context", "")
+        self.current_gen_id = state.get("current_gen_id", 0)
+        dashboard_data["is_online"] = self.session_active
+        now = time.time()
+        self.update_dashboard(self.get_active_mode_id(now), now)
+        if self.session_active:
+            self.add_log("配信セッション状態を復元しました")
+            self.start_event_loop()
+
+    def mark_state_dirty(self):
+        self._state_dirty = True
+
+    def save_state(self, force=False):
+        if self.state_store is None:
+            self._state_dirty = False
+            return
+
+        if force or self._state_dirty:
+            self.state_store.save(self.snapshot_state())
+            self._state_dirty = False
 
     def trigger_manual_jack(self, mode_id):
         if mode_id in self.personality_library:
@@ -58,6 +104,8 @@ class StreamManager:
                 f"\n# 手動介入: すぐに「{mode_name}」として反応してください。"
                 "出力は日本語のみです。"
             )
+            self.mark_state_dirty()
+            self.save_state()
             return jsonify({"status": "success", "mode": mode_name})
         return jsonify({"status": "error"}), 400
 
@@ -70,12 +118,23 @@ class StreamManager:
         self.start_tiktok_listener()
         self.start_event_loop()
         dashboard_data["is_online"] = True
+        self.mark_state_dirty()
+        self.save_state()
         return {"status": "started"}
 
     def stop_session(self):
         self.session_active = False
+        self.override_mode_id = None
+        self.override_expiry = 0
+        self.gift_queue = []
+        self.pending_context = ""
+        self.current_gen_id = 0
+        self.recent_gift_events = {}
         self.add_log("配信セッション停止")
         dashboard_data["is_online"] = False
+        self.update_dashboard(self.get_active_mode_id(time.time()), time.time())
+        self.mark_state_dirty()
+        self.save_state()
         return {"status": "stopped"}
 
     def start_event_loop(self):
@@ -158,6 +217,7 @@ class StreamManager:
         self.update_mode(now)
         active_id = self.get_active_mode_id(now)
         self.update_dashboard(active_id, now)
+        self.save_state()
         return active_id
 
     def process_pending_events(self):
@@ -195,6 +255,8 @@ class StreamManager:
         sys_prompt = self.build_system_prompt(active_id)
         current_context = self.pending_context
         self.pending_context = ""
+        self.mark_state_dirty()
+        self.save_state()
         self.is_generating = True
         try:
             comment = self.ai.generate_comment(
@@ -224,6 +286,7 @@ class StreamManager:
                     f"\n# 視聴者コメント: {event['user']} さん「{event['text']}」。"
                     "必要なら日本語で短く反応してください。"
                 )
+                self.mark_state_dirty()
             elif event_type == "gift":
                 self.handle_gift_event(event)
             elif event_type == "gift_unknown":
@@ -239,10 +302,12 @@ class StreamManager:
                 self.pending_context += (
                     f"\n# 入室通知: {event['count']}人が入室しました。名前: {event['users']}。"
                 )
+                self.mark_state_dirty()
             elif event_type == "follow":
                 self.pending_context += (
                     f"\n# フォロー通知: {event['user']} さんがフォローしました。日本語で感謝してください。"
                 )
+                self.mark_state_dirty()
 
     def handle_gift_event(self, event):
         gift_name = event["gift_name"]
@@ -259,6 +324,7 @@ class StreamManager:
             self.pending_context += (
                 f"\n# ギフト受信: {event['user']} さんから {gift_name}。短く日本語で感謝してください。"
             )
+            self.mark_state_dirty()
             return
 
         mode_id = normalized_gift_to_mode[gift_key]
@@ -269,6 +335,7 @@ class StreamManager:
             f"\n# 重要: {event['user']} さんから {gift_name} を受信。"
             f"次は「{mode_name}」に切り替わることを日本語で宣言してください。"
         )
+        self.mark_state_dirty()
 
     def is_duplicate_gift_event(self, event, gift_key):
         now = time.time()
@@ -309,6 +376,7 @@ class StreamManager:
         self.pending_context += (
             f"\n# システム: ここから人格を「{mode_name}」に切り替えてください。出力は日本語のみです。"
         )
+        self.mark_state_dirty()
 
     def return_to_normal_mode(self):
         mode_name = self.personality_library["normal"]["name"]
@@ -317,6 +385,7 @@ class StreamManager:
             f"\n# システム: ここから人格を「{mode_name}」に戻してください。出力は日本語のみです。"
         )
         self.override_mode_id = None
+        self.mark_state_dirty()
 
     def get_active_mode_id(self, now):
         if self.override_mode_id and now < self.override_expiry:
@@ -340,6 +409,8 @@ class StreamManager:
         sys_prompt = self.build_system_prompt(active_id)
         current_context = self.pending_context
         self.pending_context = ""
+        self.mark_state_dirty()
+        self.save_state()
         self.is_generating = True
         threading.Thread(
             target=self.process_ai_task,

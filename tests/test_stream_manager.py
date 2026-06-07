@@ -17,6 +17,19 @@ class FakeVoice:
         self.spoken.append(text)
 
 
+class FakeStateStore:
+    def __init__(self, state=None):
+        self.state = state
+        self.saved = []
+
+    def load(self):
+        return self.state
+
+    def save(self, state):
+        self.state = state
+        self.saved.append(state)
+
+
 def make_manager(app_module):
     voice = FakeVoice()
     manager = app_module.StreamManager(
@@ -24,6 +37,18 @@ def make_manager(app_module):
         ai=types.SimpleNamespace(generate_comment=lambda *_args, **_kwargs: None),
         voice=voice,
         tiktok=types.SimpleNamespace(current_patch_id="normal"),
+    )
+    return manager, voice
+
+
+def make_manager_with_store(app_module, store):
+    voice = FakeVoice()
+    manager = app_module.StreamManager(
+        capturer=types.SimpleNamespace(get_frame_bytes=lambda: None),
+        ai=types.SimpleNamespace(generate_comment=lambda *_args, **_kwargs: None),
+        voice=voice,
+        tiktok=types.SimpleNamespace(current_patch_id="normal"),
+        state_store=store,
     )
     return manager, voice
 
@@ -61,6 +86,46 @@ def test_start_session_starts_event_loop(app_module):
     manager.start_session()
 
     assert called == {"event_loop": True}
+
+
+def test_start_and_stop_session_are_persisted(app_module):
+    store = FakeStateStore()
+    manager, _voice = make_manager_with_store(app_module, store)
+    manager.start_tiktok_listener = lambda: None
+    manager.start_event_loop = lambda: None
+
+    manager.start_session()
+    assert store.saved[-1]["session_active"] is True
+
+    manager.override_mode_id = "gal"
+    manager.gift_queue.append(("samurai", "viewer", "Ice Cream"))
+    manager.stop_session()
+    assert store.saved[-1]["session_active"] is False
+    assert store.saved[-1]["gift_queue"] == []
+    assert store.saved[-1]["override_mode_id"] is None
+
+
+def test_stream_state_is_restored_on_new_manager(app_module, monkeypatch):
+    state = {
+        "session_active": True,
+        "override_mode_id": "gal",
+        "override_expiry": time.time() + 30,
+        "gift_queue": [["samurai", "viewer", "Ice Cream"]],
+        "pending_context": "pending",
+        "current_gen_id": 123,
+    }
+    store = FakeStateStore(state)
+    monkeypatch.setattr(app_module.StreamManager, "start_event_loop", lambda self: None)
+
+    manager, _voice = make_manager_with_store(app_module, store)
+
+    assert manager.session_active is True
+    assert manager.override_mode_id == "gal"
+    assert manager.gift_queue == [("samurai", "viewer", "Ice Cream")]
+    assert manager.pending_context == "pending"
+    assert manager.current_gen_id == 123
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["gal"]["name"]
+    assert app_module.dashboard_data["is_online"] is True
 
 
 def test_gift_logs_are_japanese(app_module):
@@ -226,6 +291,17 @@ def test_submit_events_accepts_external_events_and_updates_dashboard(app_module)
     assert result == {"status": "accepted", "accepted": 1}
     assert manager.override_mode_id == "nechinechi"
     assert app_module.dashboard_data["active_mode"] == manager.personality_library["nechinechi"]["name"]
+
+
+def test_submit_events_persists_gift_queue(app_module):
+    store = FakeStateStore()
+    manager, _voice = make_manager_with_store(app_module, store)
+    manager.session_active = True
+
+    manager.submit_events([{"type": "gift", "user": "viewer", "gift_name": "Rose"}])
+
+    assert store.saved[-1]["override_mode_id"] == "nechinechi"
+    assert store.saved[-1]["session_active"] is True
 
 
 def test_tiktok_status_event_is_logged(app_module):
