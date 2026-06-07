@@ -187,6 +187,7 @@ Invoke-Checked `
         "--max-instances=1",
         "--memory=512Mi",
         "--cpu=1",
+        "--no-cpu-throttling",
         "--timeout=3600",
         "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,AUDIO_BUCKET_NAME=$AudioBucketName",
         "--set-secrets=API_KEY=ai-delivery-api-key:latest"

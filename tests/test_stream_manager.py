@@ -43,12 +43,24 @@ def test_add_log_appends_timestamped_entries_and_keeps_latest_50(app_module):
 def test_session_logs_are_japanese(app_module):
     manager, _voice = make_manager(app_module)
     manager.start_tiktok_listener = lambda: None
+    manager.start_event_loop = lambda: None
 
     assert manager.start_session() == {"status": "started"}
     assert app_module.dashboard_data["logs"][-1].endswith("配信セッション開始")
 
     assert manager.stop_session() == {"status": "stopped"}
     assert app_module.dashboard_data["logs"][-1].endswith("配信セッション停止")
+
+
+def test_start_session_starts_event_loop(app_module):
+    manager, _voice = make_manager(app_module)
+    called = {}
+    manager.start_tiktok_listener = lambda: None
+    manager.start_event_loop = lambda: called.setdefault("event_loop", True)
+
+    manager.start_session()
+
+    assert called == {"event_loop": True}
 
 
 def test_gift_logs_are_japanese(app_module):
@@ -178,6 +190,7 @@ def test_refresh_dashboard_drains_pending_gift_events(app_module):
 
 def test_submit_events_accepts_external_events_and_updates_dashboard(app_module):
     manager, _voice = make_manager(app_module)
+    manager.session_active = True
 
     result = manager.submit_events(
         [
@@ -189,6 +202,22 @@ def test_submit_events_accepts_external_events_and_updates_dashboard(app_module)
     assert result == {"status": "accepted", "accepted": 1}
     assert manager.override_mode_id == "nechinechi"
     assert app_module.dashboard_data["active_mode"] == manager.personality_library["nechinechi"]["name"]
+
+
+def test_tick_events_advances_queued_mode_without_frame_or_status_request(app_module):
+    manager, _voice = make_manager(app_module)
+    manager.session_active = True
+    manager.override_mode_id = "gal"
+    manager.override_expiry = time.time() - 1
+    manager.gift_queue.append(("samurai", "viewer", "Ice Cream"))
+
+    manager.tick_events()
+
+    assert manager.override_mode_id == "samurai"
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["samurai"]["name"]
+    assert app_module.dashboard_data["logs"][-1].endswith(
+        ">>> 人格切替: 侍OS (viewer さん)"
+    )
 
 
 def test_process_ai_task_speaks_generated_comment_and_resets_flag(app_module):

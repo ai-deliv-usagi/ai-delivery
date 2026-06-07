@@ -31,6 +31,8 @@ class StreamManager:
         self.is_generating = False
         self.session_active = False
         self.tiktok_thread = None
+        self.event_loop_thread = None
+        self.event_loop_interval = 0.25
 
     @staticmethod
     def normalize_gift_name(gift_name):
@@ -64,6 +66,7 @@ class StreamManager:
         self.session_active = True
         self.add_log("配信セッション開始")
         self.start_tiktok_listener()
+        self.start_event_loop()
         dashboard_data["is_online"] = True
         return {"status": "started"}
 
@@ -72,6 +75,18 @@ class StreamManager:
         self.add_log("配信セッション停止")
         dashboard_data["is_online"] = False
         return {"status": "stopped"}
+
+    def start_event_loop(self):
+        if self.event_loop_thread and self.event_loop_thread.is_alive():
+            return
+
+        self.event_loop_thread = threading.Thread(target=self.event_loop, daemon=True)
+        self.event_loop_thread.start()
+
+    def event_loop(self):
+        while self.session_active:
+            self.tick_events()
+            time.sleep(self.event_loop_interval)
 
     def start_tiktok_listener(self):
         if not hasattr(self.tiktok, "run_forever"):
@@ -131,13 +146,17 @@ class StreamManager:
         self.start_generation_if_ready(active_id)
 
     def refresh_dashboard(self):
+        self.tick_events()
+        return dashboard_data
+
+    def tick_events(self):
         now = time.time()
         if self.session_active:
             self.process_pending_events()
         self.update_mode(now)
         active_id = self.get_active_mode_id(now)
         self.update_dashboard(active_id, now)
-        return dashboard_data
+        return active_id
 
     def process_pending_events(self):
         events = []
@@ -159,22 +178,14 @@ class StreamManager:
             self.event_queue.put(event)
             accepted += 1
 
-        now = time.time()
-        self.process_pending_events()
-        self.update_mode(now)
-        active_id = self.get_active_mode_id(now)
-        self.update_dashboard(active_id, now)
+        active_id = self.tick_events()
         return {"status": "accepted", "accepted": accepted}
 
     def process_frame(self, frame):
         if not self.session_active:
             return {"status": "inactive"}
 
-        now = time.time()
-        self.process_pending_events()
-        self.update_mode(now)
-        active_id = self.get_active_mode_id(now)
-        self.update_dashboard(active_id, now)
+        active_id = self.tick_events()
 
         if self.voice.is_speaking or self.is_generating:
             return {"status": "busy"}

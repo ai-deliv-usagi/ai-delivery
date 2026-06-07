@@ -31,7 +31,9 @@ Secret Manager version.
 ## Streaming flow
 
 The Cloud Run app is request-driven. It does not start the stream loop when the
-container boots.
+container boots. During an active session, it runs a lightweight background
+event loop so gift queues, jack expiry, and dashboard timers can advance without
+waiting for `/api/frames` or `/api/status`.
 
 Create a local virtual environment for `local_agent`:
 
