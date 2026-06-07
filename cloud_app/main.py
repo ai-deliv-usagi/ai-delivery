@@ -21,17 +21,26 @@ stream_manager = None
 
 
 def get_stream_manager():
+    global stream_manager
+    if stream_manager is None:
+        stream_manager = create_stream_manager()
     return stream_manager
 
 
 register_routes(app, get_stream_manager, frame_store)
 
 
+def clean_env_value(value):
+    if value is None:
+        return None
+    return value.lstrip("\ufeff").strip()
+
+
 def create_stream_manager():
-    api_key = os.getenv("API_KEY")
-    model_id = os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash-lite")
-    tiktok_unique_id = os.getenv("TIKTOK_UNIQUE_ID")
-    voicevox_url = os.getenv("VOICEVOX_URL", "http://127.0.0.1:50021")
+    api_key = clean_env_value(os.getenv("API_KEY"))
+    model_id = clean_env_value(os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash-lite"))
+    tiktok_unique_id = clean_env_value(os.getenv("TIKTOK_UNIQUE_ID"))
+    voicevox_url = clean_env_value(os.getenv("VOICEVOX_URL", "http://127.0.0.1:50021"))
     voicevox_speaker_id = int(os.getenv("VOICEVOX_SPEAKER_ID", "63"))
 
     ai = AICommentator(api_key, model_id)
@@ -41,11 +50,9 @@ def create_stream_manager():
 
 
 def main():
-    global stream_manager
-    stream_manager = create_stream_manager()
     port = int(os.getenv("PORT", "5000"))
     enable_debug_input = os.getenv("ENABLE_DEBUG_INPUT", "").lower() in {"1", "true", "yes"}
-    stream_manager.run(
+    get_stream_manager().run(
         flask_app=app,
         port=port,
         enable_debug_input=enable_debug_input,

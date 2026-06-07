@@ -27,6 +27,8 @@ class StreamManager:
         self.pending_context = ""
         self.current_gen_id = 0
         self.is_generating = False
+        self.session_active = False
+        self.tiktok_thread = None
 
     def add_log(self, msg):
         add_log(msg)
@@ -45,6 +47,29 @@ class StreamManager:
             self.pending_context += f"\n# Manual override: speak as {mode_name} immediately."
             return jsonify({"status": "success", "mode": mode_name})
         return jsonify({"status": "error"}), 400
+
+    def start_session(self):
+        if self.session_active:
+            return {"status": "already_started"}
+
+        self.session_active = True
+        self.add_log("Session started")
+        self.start_tiktok_listener()
+        dashboard_data["is_online"] = True
+        return {"status": "started"}
+
+    def stop_session(self):
+        self.session_active = False
+        self.add_log("Session stopped")
+        dashboard_data["is_online"] = False
+        return {"status": "stopped"}
+
+    def start_tiktok_listener(self):
+        if self.tiktok_thread and self.tiktok_thread.is_alive():
+            return
+
+        self.tiktok_thread = threading.Thread(target=self.tiktok.run_forever, daemon=True)
+        self.tiktok_thread.start()
 
     def debug_input_loop(self):
         while True:
@@ -73,7 +98,7 @@ class StreamManager:
                 target=lambda: flask_app.run(port=port, debug=False, use_reloader=False),
                 daemon=True,
             ).start()
-        threading.Thread(target=self.tiktok.run_forever, daemon=True).start()
+        self.start_session()
         if enable_debug_input:
             threading.Thread(target=self.debug_input_loop, daemon=True).start()
 
@@ -82,6 +107,9 @@ class StreamManager:
             time.sleep(0.1)
 
     def tick(self):
+        if not self.session_active:
+            return None
+
         now = time.time()
         self.handle_events(self.tiktok.fetch_events())
         self.update_mode(now)
@@ -89,6 +117,43 @@ class StreamManager:
         active_id = self.get_active_mode_id(now)
         self.update_dashboard(active_id, now)
         self.start_generation_if_ready(active_id)
+
+    def process_frame(self, frame):
+        if not self.session_active:
+            return {"status": "inactive"}
+
+        if self.voice.is_speaking or self.is_generating:
+            return {"status": "busy"}
+
+        now = time.time()
+        self.handle_events(self.tiktok.fetch_events())
+        self.update_mode(now)
+        active_id = self.get_active_mode_id(now)
+        self.update_dashboard(active_id, now)
+
+        sys_prompt = self.build_system_prompt(active_id)
+        current_context = self.pending_context
+        self.pending_context = ""
+        self.is_generating = True
+        try:
+            comment = self.ai.generate_comment(
+                frame,
+                system_prompt=sys_prompt + SPEED_INSTRUCTION,
+                extra_context=current_context,
+            )
+            if not comment:
+                return {"status": "no_comment"}
+
+            self.add_log(f"AI: {comment}")
+            audio = self.voice.speak(comment)
+            return {
+                "status": "ok",
+                "comment": comment,
+                "audio": audio,
+                "audio_content_type": "audio/wav",
+            }
+        finally:
+            self.is_generating = False
 
     def handle_events(self, events):
         for event in events:
