@@ -1,6 +1,7 @@
 import sys
 import threading
 import time
+import queue
 
 from flask import jsonify
 
@@ -20,6 +21,7 @@ class StreamManager:
 
         self.personality_library = PERSONALITY_LIBRARY
         self.gift_to_mode = GIFT_TO_MODE
+        self.event_queue = queue.Queue()
 
         self.override_mode_id = None
         self.override_expiry = 0
@@ -72,6 +74,9 @@ class StreamManager:
         return {"status": "stopped"}
 
     def start_tiktok_listener(self):
+        if not hasattr(self.tiktok, "run_forever"):
+            return
+
         if self.tiktok_thread and self.tiktok_thread.is_alive():
             return
 
@@ -83,19 +88,19 @@ class StreamManager:
             cmd = sys.stdin.readline().strip().lower()
 
             if cmd == "rose":
-                self.tiktok.event_queue.put(
+                self.event_queue.put(
                     {"type": "gift", "user": "DebugUser", "gift_name": "Rose"}
                 )
             elif cmd == "heart":
-                self.tiktok.event_queue.put(
+                self.event_queue.put(
                     {"type": "gift", "user": "DebugUser", "gift_name": "Finger Heart"}
                 )
             elif cmd == "ice":
-                self.tiktok.event_queue.put(
+                self.event_queue.put(
                     {"type": "gift", "user": "DebugUser", "gift_name": "Ice Cream"}
                 )
             elif cmd == "comment":
-                self.tiktok.event_queue.put(
+                self.event_queue.put(
                     {"type": "comment", "user": "DebugUser", "text": "hello"}
                 )
 
@@ -135,12 +140,31 @@ class StreamManager:
         return dashboard_data
 
     def process_pending_events(self):
-        if not hasattr(self.tiktok, "fetch_events"):
-            return []
+        events = []
 
-        events = self.tiktok.fetch_events()
+        if hasattr(self.tiktok, "fetch_events"):
+            events.extend(self.tiktok.fetch_events())
+
+        while not self.event_queue.empty():
+            events.append(self.event_queue.get_nowait())
+
         self.handle_events(events)
         return events
+
+    def submit_events(self, events):
+        accepted = 0
+        for event in events:
+            if not isinstance(event, dict) or "type" not in event:
+                continue
+            self.event_queue.put(event)
+            accepted += 1
+
+        now = time.time()
+        self.process_pending_events()
+        self.update_mode(now)
+        active_id = self.get_active_mode_id(now)
+        self.update_dashboard(active_id, now)
+        return {"status": "accepted", "accepted": accepted}
 
     def process_frame(self, frame):
         if not self.session_active:

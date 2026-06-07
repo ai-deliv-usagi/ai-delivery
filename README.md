@@ -4,7 +4,7 @@
 
 The cloud side is intended to run on Cloud Run:
 
-- `ai-delivery-app`: Flask dashboard, Gemini commentary, TikTok listener, frame API
+- `ai-delivery-app`: Flask dashboard, Gemini commentary, local event API, frame API
 - `ai-delivery-voicevox`: VOICEVOX Engine
 - Cloud Storage bucket: generated audio files
 - Secret Manager: `API_KEY`
@@ -16,8 +16,7 @@ $env:API_KEY = "your-gemini-api-key"
 
 .\scripts\deploy-gcp.ps1 `
   -ProjectId "gen-lang-client-0496284195" `
-  -Region "asia-northeast1" `
-  -TiktokUniqueId "@your_tiktok_id"
+  -Region "asia-northeast1"
 ```
 
 The deploy script applies Terraform first, adds Secret Manager versions from
@@ -45,12 +44,13 @@ pip install -r requirements-local.txt
 
 ```powershell
 $env:CLOUD_APP_URL = "https://your-ai-delivery-app-url"
+$env:TIKTOK_UNIQUE_ID = "@your_tiktok_id"
 python -m local_agent.main
 ```
 
 `local_agent` starts a session, sends captured Minecraft frames to
-`/api/frames`, plays returned VOICEVOX audio locally, and stops the session when
-the process exits.
+`/api/frames`, sends TikTok Live comments/gifts/follows to `/api/events`, plays
+returned VOICEVOX audio locally, and stops the session when the process exits.
 
 Useful checks:
 
@@ -129,9 +129,9 @@ $env:API_KEY = "your-gemini-api-key"
 .\scripts\set-gcp-secrets.ps1 -ProjectId "gen-lang-client-0496284195"
 ```
 
-`TIKTOK_UNIQUE_ID` is not stored in Secret Manager. Set it in
-`infra/terraform/terraform.tfvars` as `tiktok_unique_id`, or pass
-`-TiktokUniqueId` to `deploy-gcp.ps1`.
+`TIKTOK_UNIQUE_ID` is not stored in Secret Manager and is not deployed to Cloud
+Run. Set it in the local environment or local `.env` before running
+`python -m local_agent.main`.
 
 Terraform intentionally does not manage Secret Manager versions. This prevents a
 dummy value such as `CHANGE_ME` from becoming the latest secret version after a

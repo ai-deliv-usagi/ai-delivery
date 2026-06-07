@@ -1,25 +1,45 @@
 import queue
+import threading
 import time
 
 from TikTokLive import TikTokLiveClient
 from TikTokLive.events import CommentEvent, ConnectEvent, FollowEvent, GiftEvent, JoinEvent
 
-from cloud_app.dashboard.state import dashboard_data
 
-
-class TikTokListener:
-    def __init__(self, unique_id):
+class LocalTikTokListener:
+    def __init__(self, unique_id, log=None):
+        self.unique_id = unique_id
+        self.log = log or (lambda _message: None)
         self.client = TikTokLiveClient(unique_id=unique_id)
         self.event_queue = queue.Queue()
-        self.current_patch_id = "normal"
         self.join_buffer = []
         self.last_join_time = time.time()
+        self.thread = None
         self._setup_events()
+
+    @staticmethod
+    def extract_gift_name(event):
+        gift = getattr(event, "gift", None)
+        if gift is None:
+            return None
+
+        for attr in ("name", "gift_name"):
+            value = getattr(gift, attr, None)
+            if value:
+                return value
+
+        info = getattr(gift, "info", None)
+        if info is not None:
+            value = getattr(info, "name", None)
+            if value:
+                return value
+
+        return None
 
     def _setup_events(self):
         @self.client.on(ConnectEvent)
-        async def on_connect(event):
-            dashboard_data["is_online"] = True
+        async def on_connect(_event):
+            self.log(f"TikTokLive connected: {self.unique_id}")
 
         @self.client.on(CommentEvent)
         async def on_comment(event):
@@ -56,34 +76,22 @@ class TikTokListener:
         async def on_follow(event):
             self.event_queue.put({"type": "follow", "user": event.user.nickname})
 
+    def start(self):
+        if self.thread and self.thread.is_alive():
+            return
+
+        self.thread = threading.Thread(target=self.run_forever, daemon=True)
+        self.thread.start()
+
     def run_forever(self):
         while True:
             try:
                 self.client.run(fetch_gift_info=True)
             except TypeError:
                 self.client.run()
-            except Exception:
-                dashboard_data["is_online"] = False
+            except Exception as exc:
+                self.log(f"TikTokLive connection error: {exc}")
                 time.sleep(15)
-
-    @staticmethod
-    def extract_gift_name(event):
-        gift = getattr(event, "gift", None)
-        if gift is None:
-            return None
-
-        for attr in ("name", "gift_name"):
-            value = getattr(gift, attr, None)
-            if value:
-                return value
-
-        info = getattr(gift, "info", None)
-        if info is not None:
-            value = getattr(info, "name", None)
-            if value:
-                return value
-
-        return None
 
     def fetch_events(self):
         events = []

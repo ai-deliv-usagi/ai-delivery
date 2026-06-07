@@ -1,4 +1,3 @@
 project_id        = "XXX"
 region            = "asia-northeast1"
 audio_bucket_name = "XXX"
-tiktok_unique_id  = "@your_tiktok_id"

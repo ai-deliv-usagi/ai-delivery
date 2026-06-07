@@ -1,2 +1,0 @@
-"""TikTok live event integration."""
-

@@ -121,3 +121,31 @@ def test_receive_frame_returns_audio_base64_when_generated(app_module, client):
         "audio_content_type": "audio/wav",
         "audio_encoding": "base64",
     }
+
+
+def test_receive_events_requires_event_list(client):
+    response = client.post("/api/events", json={"events": "gift"})
+
+    assert response.status_code == 400
+    assert response.get_json() == {"status": "error", "message": "events must be a list"}
+
+
+def test_receive_events_delegates_to_stream_manager(app_module, client):
+    called = {}
+
+    def submit_events(events):
+        called["events"] = events
+        return {"status": "accepted", "accepted": len(events)}
+
+    app_module.stream_manager = types.SimpleNamespace(submit_events=submit_events)
+
+    response = client.post(
+        "/api/events",
+        json={"events": [{"type": "gift", "user": "alice", "gift_name": "Rose"}]},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "accepted", "accepted": 1}
+    assert called == {
+        "events": [{"type": "gift", "user": "alice", "gift_name": "Rose"}]
+    }

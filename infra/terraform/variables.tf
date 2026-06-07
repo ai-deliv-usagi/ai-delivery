@@ -57,8 +57,9 @@ variable "gemini_model_id" {
 }
 
 variable "tiktok_unique_id" {
-  description = "TikTok Live unique ID, for example @your_tiktok_id. This is not treated as a secret."
+  description = "Deprecated. TikTok Live now runs in local_agent; keep this only for old tfvars compatibility."
   type        = string
+  default     = ""
 }
 
 variable "voicevox_speaker_id" {

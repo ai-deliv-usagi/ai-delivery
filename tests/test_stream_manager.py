@@ -160,6 +160,37 @@ def test_refresh_dashboard_recalculates_timer(app_module):
     assert 0 < app_module.dashboard_data["timer"] <= 30
 
 
+def test_refresh_dashboard_drains_pending_gift_events(app_module):
+    manager, _voice = make_manager(app_module)
+    manager.session_active = True
+    manager.tiktok = types.SimpleNamespace(
+        current_patch_id="normal",
+        fetch_events=lambda: [{"type": "gift", "user": "viewer", "gift_name": "Rose"}],
+    )
+
+    manager.refresh_dashboard()
+
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["nechinechi"]["name"]
+    assert app_module.dashboard_data["logs"][-1].endswith(
+        ">>> 人格切替: ネチネチOS (viewer さん)"
+    )
+
+
+def test_submit_events_accepts_external_events_and_updates_dashboard(app_module):
+    manager, _voice = make_manager(app_module)
+
+    result = manager.submit_events(
+        [
+            {"type": "gift", "user": "viewer", "gift_name": "Rose"},
+            {"missing": "type"},
+        ]
+    )
+
+    assert result == {"status": "accepted", "accepted": 1}
+    assert manager.override_mode_id == "nechinechi"
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["nechinechi"]["name"]
+
+
 def test_process_ai_task_speaks_generated_comment_and_resets_flag(app_module):
     manager, voice = make_manager(app_module)
     manager.is_generating = True

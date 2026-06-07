@@ -9,7 +9,6 @@ locals {
 
   app_env = {
     GEMINI_MODEL_ID     = var.gemini_model_id
-    TIKTOK_UNIQUE_ID    = var.tiktok_unique_id
     VOICEVOX_SPEAKER_ID = tostring(var.voicevox_speaker_id)
     VOICEVOX_URL        = google_cloud_run_v2_service.voicevox.uri
     AUDIO_BUCKET_NAME   = google_storage_bucket.audio.name

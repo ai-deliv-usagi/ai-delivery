@@ -8,7 +8,6 @@ from cloud_app.dashboard.routes import register_routes
 from cloud_app.dashboard.state import dashboard_data
 from cloud_app.frames import FrameStore
 from cloud_app.stream.manager import StreamManager
-from cloud_app.tiktok.listener import TikTokListener
 from cloud_app.voice.voicevox import VoicevoxOutput
 from local_agent.capture.minecraft import MinecraftCapturer
 

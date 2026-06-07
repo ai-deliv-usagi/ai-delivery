@@ -18,11 +18,6 @@ output "api_key_secret_id" {
   value       = var.api_key_secret_id
 }
 
-output "tiktok_unique_id" {
-  description = "TikTok Live unique ID configured for the app."
-  value       = var.tiktok_unique_id
-}
-
 output "artifact_registry_repository" {
   description = "Artifact Registry repository resource."
   value       = google_artifact_registry_repository.app.name

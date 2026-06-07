@@ -120,8 +120,8 @@ if ([string]::IsNullOrWhiteSpace($AudioBucketName)) {
     $AudioBucketName = "$ProjectId-ai-delivery-audio"
 }
 
-if ([string]::IsNullOrWhiteSpace($TiktokUniqueId) -and $env:TIKTOK_UNIQUE_ID) {
-    $TiktokUniqueId = $env:TIKTOK_UNIQUE_ID
+if (-not [string]::IsNullOrWhiteSpace($TiktokUniqueId)) {
+    Write-Warning "TiktokUniqueId is now used by local_agent only. Set TIKTOK_UNIQUE_ID in local .env instead."
 }
 
 $terraformDir = (Resolve-Path (Join-Path $PSScriptRoot "..\infra\terraform")).Path
@@ -156,10 +156,6 @@ $terraformApplyArgs = @(
     "-var=voicevox_speaker_id=$VoicevoxSpeakerId"
 )
 
-if (-not [string]::IsNullOrWhiteSpace($TiktokUniqueId)) {
-    $terraformApplyArgs += "-var=tiktok_unique_id=$TiktokUniqueId"
-}
-
 Invoke-Checked `
     -Description "Terraform init" `
     -Command $terraformExe `
@@ -173,11 +169,6 @@ Invoke-Checked `
 $voicevoxUrl = (& $terraformExe "-chdir=$terraformDir" output -raw voicevox_url).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($voicevoxUrl)) {
     throw "Could not read voicevox_url from Terraform output."
-}
-
-$tiktokUniqueIdOutput = (& $terraformExe "-chdir=$terraformDir" output -raw tiktok_unique_id).Trim()
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tiktokUniqueIdOutput)) {
-    throw "Could not read tiktok_unique_id from Terraform output. Set tiktok_unique_id in terraform.tfvars or pass -TiktokUniqueId."
 }
 
 Invoke-Checked `
@@ -197,7 +188,7 @@ Invoke-Checked `
         "--memory=512Mi",
         "--cpu=1",
         "--timeout=3600",
-        "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,TIKTOK_UNIQUE_ID=$tiktokUniqueIdOutput,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,AUDIO_BUCKET_NAME=$AudioBucketName",
+        "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,AUDIO_BUCKET_NAME=$AudioBucketName",
         "--set-secrets=API_KEY=ai-delivery-api-key:latest"
     )
 
