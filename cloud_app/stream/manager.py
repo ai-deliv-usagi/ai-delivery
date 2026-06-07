@@ -228,6 +228,13 @@ class StreamManager:
                 self.handle_gift_event(event)
             elif event_type == "gift_unknown":
                 self.add_log(f"ギフト名取得失敗: {event['user']} さん ({event['raw']})")
+            elif event_type == "tiktok_status":
+                label = event.get("label") or {
+                    "starting": "接続中",
+                    "connected": "接続成功",
+                    "error": "接続エラー",
+                }.get(event.get("status"), "状態更新")
+                self.add_log(f"TikTokLive [{label}] {event['message']}")
             elif event_type == "join_bulk":
                 self.pending_context += (
                     f"\n# 入室通知: {event['count']}人が入室しました。名前: {event['users']}。"

@@ -228,6 +228,24 @@ def test_submit_events_accepts_external_events_and_updates_dashboard(app_module)
     assert app_module.dashboard_data["active_mode"] == manager.personality_library["nechinechi"]["name"]
 
 
+def test_tiktok_status_event_is_logged(app_module):
+    manager, _voice = make_manager(app_module)
+
+    manager.handle_events(
+        [
+            {
+                "type": "tiktok_status",
+                "status": "error",
+                "message": "TikTokLive接続エラー: boom",
+            }
+        ]
+    )
+
+    assert app_module.dashboard_data["logs"][-1].endswith(
+        "TikTokLive [接続エラー] TikTokLive接続エラー: boom"
+    )
+
+
 def test_tick_events_advances_queued_mode_without_frame_or_status_request(app_module):
     manager, _voice = make_manager(app_module)
     manager.session_active = True

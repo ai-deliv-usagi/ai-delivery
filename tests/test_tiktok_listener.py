@@ -22,6 +22,21 @@ def test_fetch_events_drains_event_queue(app_module):
     assert listener.event_queue.empty()
 
 
+def test_enqueue_status_adds_tiktok_status_event(app_module):
+    listener = make_listener(app_module)
+
+    listener.enqueue_status("error", "TikTokLive接続エラー: boom")
+
+    assert listener.fetch_events() == [
+        {
+            "type": "tiktok_status",
+            "status": "error",
+            "label": "接続エラー",
+            "message": "TikTokLive接続エラー: boom",
+        }
+    ]
+
+
 def test_fetch_events_groups_three_or_more_joined_users(app_module):
     listener = make_listener(app_module)
     listener.join_buffer = ["alice", "bob", "carol"]

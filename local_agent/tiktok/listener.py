@@ -17,6 +17,21 @@ class LocalTikTokListener:
         self.thread = None
         self._setup_events()
 
+    def enqueue_status(self, status, message):
+        labels = {
+            "starting": "接続中",
+            "connected": "接続成功",
+            "error": "接続エラー",
+        }
+        self.event_queue.put(
+            {
+                "type": "tiktok_status",
+                "status": status,
+                "label": labels.get(status, "状態更新"),
+                "message": message,
+            }
+        )
+
     @staticmethod
     def extract_gift_name(event):
         gift = getattr(event, "gift", None)
@@ -89,7 +104,9 @@ class LocalTikTokListener:
     def _setup_events(self):
         @self.client.on(ConnectEvent)
         async def on_connect(_event):
-            self.log(f"TikTokLive connected: {self.unique_id}")
+            message = f"TikTokLiveに接続しました: {self.unique_id}"
+            self.log(message)
+            self.enqueue_status("connected", message)
 
         @self.client.on(CommentEvent)
         async def on_comment(event):
@@ -134,6 +151,7 @@ class LocalTikTokListener:
         if self.thread and self.thread.is_alive():
             return
 
+        self.enqueue_status("starting", f"TikTokLiveへ接続しています: {self.unique_id}")
         self.thread = threading.Thread(target=self.run_forever, daemon=True)
         self.thread.start()
 
@@ -144,7 +162,12 @@ class LocalTikTokListener:
             except TypeError:
                 self.client.run()
             except Exception as exc:
-                self.log(f"TikTokLive connection error: {exc}")
+                message = f"TikTokLive接続エラー: {exc}"
+                self.log(message)
+                self.enqueue_status(
+                    "error",
+                    f"{message}。15秒後に再接続します。",
+                )
                 time.sleep(15)
 
     def fetch_events(self):
