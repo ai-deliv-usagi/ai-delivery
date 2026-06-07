@@ -22,6 +22,8 @@ class StreamManager:
         self.personality_library = PERSONALITY_LIBRARY
         self.gift_to_mode = GIFT_TO_MODE
         self.event_queue = queue.Queue()
+        self.recent_gift_events = {}
+        self.gift_dedupe_seconds = 2.0
 
         self.override_mode_id = None
         self.override_expiry = 0
@@ -238,6 +240,9 @@ class StreamManager:
     def handle_gift_event(self, event):
         gift_name = event["gift_name"]
         gift_key = self.normalize_gift_name(gift_name)
+        if self.is_duplicate_gift_event(event, gift_key):
+            return
+
         normalized_gift_to_mode = {
             self.normalize_gift_name(name): mode_id
             for name, mode_id in self.gift_to_mode.items()
@@ -257,6 +262,27 @@ class StreamManager:
             f"\n# 重要: {event['user']} さんから {gift_name} を受信。"
             f"次は「{mode_name}」に切り替わることを日本語で宣言してください。"
         )
+
+    def is_duplicate_gift_event(self, event, gift_key):
+        now = time.time()
+        expired_keys = [
+            key
+            for key, seen_at in self.recent_gift_events.items()
+            if now - seen_at >= self.gift_dedupe_seconds
+        ]
+        for key in expired_keys:
+            self.recent_gift_events.pop(key, None)
+
+        dedupe_key = (
+            self.normalize_gift_name(event.get("user", "")),
+            gift_key,
+        )
+        last_seen = self.recent_gift_events.get(dedupe_key)
+        if last_seen is not None and now - last_seen < self.gift_dedupe_seconds:
+            return True
+
+        self.recent_gift_events[dedupe_key] = now
+        return False
 
     def update_mode(self, now):
         if self.voice.is_speaking:

@@ -78,3 +78,48 @@ def test_extract_gift_name_returns_none_when_missing(app_module):
     event = types.SimpleNamespace(gift=types.SimpleNamespace())
 
     assert LocalTikTokListener.extract_gift_name(event) is None
+
+
+def test_streaking_gift_event_is_in_progress(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        streaking=True,
+        gift=types.SimpleNamespace(name="Rose", type=1),
+    )
+
+    assert LocalTikTokListener.is_streak_in_progress(event) is True
+
+
+def test_finished_streak_gift_event_is_not_in_progress(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        streaking=False,
+        repeat_count=5,
+        gift=types.SimpleNamespace(name="Rose", type=1),
+    )
+
+    assert LocalTikTokListener.is_streak_in_progress(event) is False
+    assert LocalTikTokListener.extract_repeat_count(event) == 5
+
+
+def test_repeat_end_zero_gift_event_is_in_progress(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        repeat_end=0,
+        gift=types.SimpleNamespace(name="Rose", type=1),
+    )
+
+    assert LocalTikTokListener.is_streak_in_progress(event) is True
+
+
+def test_non_streakable_gift_event_is_not_in_progress(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        gift=types.SimpleNamespace(name="Gift", type=0),
+    )
+
+    assert LocalTikTokListener.is_streak_in_progress(event) is False

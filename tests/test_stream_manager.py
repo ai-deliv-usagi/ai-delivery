@@ -89,6 +89,30 @@ def test_gift_matching_accepts_case_and_japanese_aliases(app_module):
     ]
 
 
+def test_duplicate_gift_event_is_not_queued_twice(app_module):
+    manager, _voice = make_manager(app_module)
+
+    manager.handle_gift_event({"user": "viewer", "gift_name": "Rose"})
+    manager.handle_gift_event({"user": "viewer", "gift_name": "Rose"})
+
+    assert manager.gift_queue == [("nechinechi", "viewer", "Rose")]
+
+
+def test_duplicate_gift_event_expires_after_window(app_module, monkeypatch):
+    manager, _voice = make_manager(app_module)
+    now = [100.0]
+    monkeypatch.setattr(time, "time", lambda: now[0])
+
+    manager.handle_gift_event({"user": "viewer", "gift_name": "Rose"})
+    now[0] += manager.gift_dedupe_seconds + 0.1
+    manager.handle_gift_event({"user": "viewer", "gift_name": "Rose"})
+
+    assert manager.gift_queue == [
+        ("nechinechi", "viewer", "Rose"),
+        ("nechinechi", "viewer", "Rose"),
+    ]
+
+
 def test_process_frame_drains_gift_events_even_when_busy(app_module):
     manager, voice = make_manager(app_module)
     manager.session_active = True

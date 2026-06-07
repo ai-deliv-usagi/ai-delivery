@@ -36,6 +36,56 @@ class LocalTikTokListener:
 
         return None
 
+    @staticmethod
+    def extract_gift_type(event):
+        gift = getattr(event, "gift", None)
+        if gift is None:
+            return None
+
+        for attr in ("type", "gift_type"):
+            value = getattr(gift, attr, None)
+            if value is not None:
+                return value
+
+        info = getattr(gift, "info", None)
+        if info is not None:
+            value = getattr(info, "type", None)
+            if value is not None:
+                return value
+
+        return None
+
+    @staticmethod
+    def extract_repeat_count(event):
+        value = getattr(event, "repeat_count", None)
+        if value is not None:
+            return value
+
+        gift = getattr(event, "gift", None)
+        if gift is not None:
+            value = getattr(gift, "repeat_count", None)
+            if value is not None:
+                return value
+
+        return 1
+
+    @classmethod
+    def is_streak_in_progress(cls, event):
+        streaking = getattr(event, "streaking", None)
+        if streaking is not None:
+            return bool(streaking)
+
+        gift_type = cls.extract_gift_type(event)
+        repeat_end = getattr(event, "repeat_end", None)
+        if repeat_end is None:
+            gift = getattr(event, "gift", None)
+            repeat_end = getattr(gift, "repeat_end", None) if gift is not None else None
+
+        if str(gift_type) == "1" and repeat_end is not None:
+            return str(repeat_end).lower() in {"0", "false"}
+
+        return False
+
     def _setup_events(self):
         @self.client.on(ConnectEvent)
         async def on_connect(_event):
@@ -53,6 +103,9 @@ class LocalTikTokListener:
 
         @self.client.on(GiftEvent)
         async def on_gift(event):
+            if self.is_streak_in_progress(event):
+                return
+
             gift_name = self.extract_gift_name(event)
             if not gift_name:
                 self.event_queue.put(
@@ -69,6 +122,7 @@ class LocalTikTokListener:
                     "type": "gift",
                     "user": event.user.nickname,
                     "gift_name": gift_name,
+                    "repeat_count": self.extract_repeat_count(event),
                 }
             )
 
