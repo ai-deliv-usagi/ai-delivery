@@ -38,12 +38,6 @@ variable "app_image" {
   default     = "us-docker.pkg.dev/cloudrun/container/hello"
 }
 
-variable "api_key_secret_id" {
-  description = "Secret Manager secret ID that stores the Gemini API key. Secret versions are managed outside Terraform."
-  type        = string
-  default     = "ai-delivery-api-key"
-}
-
 variable "voicevox_image" {
   description = "VOICEVOX Engine container image."
   type        = string
@@ -54,6 +48,12 @@ variable "gemini_model_id" {
   description = "Gemini model ID used by the application."
   type        = string
   default     = "gemini-2.5-flash-lite"
+}
+
+variable "vertex_ai_location" {
+  description = "Vertex AI location used for Gemini."
+  type        = string
+  default     = "global"
 }
 
 variable "tiktok_unique_id" {

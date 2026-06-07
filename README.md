@@ -7,26 +7,20 @@ The cloud side is intended to run on Cloud Run:
 - `ai-delivery-app`: Flask dashboard, Gemini commentary, local event API, frame API
 - `ai-delivery-voicevox`: VOICEVOX Engine
 - Cloud Storage bucket: generated audio files
-- Secret Manager: `API_KEY`
+- Vertex AI Gemini via the Cloud Run service account
 
 Terraform lives in `infra/terraform`.
 
 ```powershell
-$env:API_KEY = "your-gemini-api-key"
-
 .\scripts\deploy-gcp.ps1 `
   -ProjectId "gen-lang-client-0496284195" `
   -Region "asia-northeast1"
 ```
 
-The deploy script applies Terraform first, adds Secret Manager versions from
-environment variables, then deploys the app to Cloud Run from local source using
-Cloud Build.
-
-Secret values are not managed by Terraform. Terraform and the deploy script only
-ensure that the `ai-delivery-api-key` secret exists. Set the actual Gemini API
-key by either exporting `API_KEY` before deployment or by manually adding a
-Secret Manager version.
+The deploy script applies Terraform first, then deploys the app to Cloud Run
+from local source using Cloud Build. Gemini uses Vertex AI authentication through
+the Cloud Run service account, so no Gemini API key or Secret Manager value is
+needed.
 
 ## Streaming flow
 
@@ -104,9 +98,9 @@ The deploy script enables required APIs before Terraform runs:
 
 ```text
 artifactregistry.googleapis.com
+aiplatform.googleapis.com
 cloudbuild.googleapis.com
 run.googleapis.com
-secretmanager.googleapis.com
 storage.googleapis.com
 ```
 
@@ -114,35 +108,9 @@ If `PERMISSION_DENIED` appears while enabling an API, the active account likely
 needs Service Usage permissions. Enable the API manually in the console or grant
 the account a role such as `Service Usage Admin`.
 
-### Secret not found
-
-`set-gcp-secrets.ps1` updates the `ai-delivery-api-key` Secret Manager value. If
-the secret does not exist, the script creates it first.
-
-```text
-Secret ... ai-delivery-api-key not found
-```
-
-Preferred flow:
-
-```powershell
-.\scripts\deploy-gcp.ps1 -ProjectId "gen-lang-client-0496284195"
-```
-
-Then update secret values when needed:
-
-```powershell
-$env:API_KEY = "your-gemini-api-key"
-.\scripts\set-gcp-secrets.ps1 -ProjectId "gen-lang-client-0496284195"
-```
-
 `TIKTOK_UNIQUE_ID` is not stored in Secret Manager and is not deployed to Cloud
 Run. Set it in the local environment or local `.env` before running
 `python -m local_agent.main`.
-
-Terraform intentionally does not manage Secret Manager versions. This prevents a
-dummy value such as `CHANGE_ME` from becoming the latest secret version after a
-future `terraform apply`.
 
 ### PowerShell and Terraform `-chdir`
 

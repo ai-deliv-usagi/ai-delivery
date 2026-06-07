@@ -38,13 +38,16 @@ def clean_env_value(value):
 
 
 def create_stream_manager():
-    api_key = clean_env_value(os.getenv("API_KEY"))
     model_id = clean_env_value(os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash-lite"))
+    project_id = clean_env_value(
+        os.getenv("GCP_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
+    )
+    vertex_ai_location = clean_env_value(os.getenv("VERTEX_AI_LOCATION", "global"))
     voicevox_url = clean_env_value(os.getenv("VOICEVOX_URL", "http://127.0.0.1:50021"))
     voicevox_speaker_id = int(os.getenv("VOICEVOX_SPEAKER_ID", "63"))
     audio_bucket_name = clean_env_value(os.getenv("AUDIO_BUCKET_NAME"))
 
-    ai = AICommentator(api_key, model_id)
+    ai = AICommentator(model_id, project_id, vertex_ai_location)
     voice = VoicevoxOutput(voicevox_url, voicevox_speaker_id)
     tiktok = types.SimpleNamespace(current_patch_id="normal")
     state_store = NullStreamStateStore()
