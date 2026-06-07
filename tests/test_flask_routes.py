@@ -25,6 +25,22 @@ def test_status_returns_current_dashboard_data(app_module, client):
     }
 
 
+def test_status_refreshes_dashboard_when_stream_manager_exists(app_module, client):
+    called = {}
+
+    def refresh_dashboard():
+        called["refresh"] = True
+        app_module.dashboard_data["timer"] = 7
+
+    app_module.stream_manager = types.SimpleNamespace(refresh_dashboard=refresh_dashboard)
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 200
+    assert response.get_json()["timer"] == 7
+    assert called == {"refresh": True}
+
+
 def test_force_jack_returns_500_when_stream_manager_is_missing(client):
     response = client.get("/api/force_jack/gal")
 

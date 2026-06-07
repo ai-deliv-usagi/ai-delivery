@@ -56,14 +56,14 @@ class StreamManager:
             return {"status": "already_started"}
 
         self.session_active = True
-        self.add_log("Session started")
+        self.add_log("配信セッション開始")
         self.start_tiktok_listener()
         dashboard_data["is_online"] = True
         return {"status": "started"}
 
     def stop_session(self):
         self.session_active = False
-        self.add_log("Session stopped")
+        self.add_log("配信セッション停止")
         dashboard_data["is_online"] = False
         return {"status": "stopped"}
 
@@ -121,6 +121,13 @@ class StreamManager:
         self.update_dashboard(active_id, now)
         self.start_generation_if_ready(active_id)
 
+    def refresh_dashboard(self):
+        now = time.time()
+        self.update_mode(now)
+        active_id = self.get_active_mode_id(now)
+        self.update_dashboard(active_id, now)
+        return dashboard_data
+
     def process_frame(self, frame):
         if not self.session_active:
             return {"status": "inactive"}
@@ -147,7 +154,7 @@ class StreamManager:
             if not comment:
                 return {"status": "no_comment"}
 
-            self.add_log(f"AI: {comment}")
+            self.add_log(f"AI実況: {comment}")
             audio = self.voice.speak(comment)
             return {
                 "status": "ok",
@@ -180,7 +187,7 @@ class StreamManager:
     def handle_gift_event(self, event):
         gift_name = event["gift_name"]
         if gift_name not in self.gift_to_mode:
-            self.add_log(f"Gift: {event['user']} sent {gift_name}")
+            self.add_log(f"ギフト受信: {event['user']} さんから {gift_name}")
             self.pending_context += (
                 f"\n# ギフト受信: {event['user']} さんから {gift_name}。短く日本語で感謝してください。"
             )
@@ -188,7 +195,7 @@ class StreamManager:
 
         mode_id = self.gift_to_mode[gift_name]
         self.gift_queue.append((mode_id, event["user"], gift_name))
-        self.add_log(f"Gift queued: {gift_name} ({event['user']})")
+        self.add_log(f"ギフト予約: {gift_name} ({event['user']} さん)")
         mode_name = self.personality_library[mode_id]["name"]
         self.pending_context += (
             f"\n# 重要: {event['user']} さんから {gift_name} を受信。"
@@ -209,14 +216,14 @@ class StreamManager:
         self.override_mode_id = next_mode
         self.override_expiry = now + 60
         mode_name = self.personality_library[next_mode]["name"]
-        self.add_log(f">>> Mode switching: {mode_name} ({gift_user})")
+        self.add_log(f">>> 人格切替: {mode_name} ({gift_user} さん)")
         self.pending_context += (
             f"\n# システム: ここから人格を「{mode_name}」に切り替えてください。出力は日本語のみです。"
         )
 
     def return_to_normal_mode(self):
         mode_name = self.personality_library["normal"]["name"]
-        self.add_log(">>> Mode jack finished. Returning to normal.")
+        self.add_log(">>> ジャック終了: 標準OSに戻ります")
         self.pending_context += (
             f"\n# システム: ここから人格を「{mode_name}」に戻してください。出力は日本語のみです。"
         )
@@ -259,7 +266,7 @@ class StreamManager:
                 extra_context=context,
             )
             if comment:
-                self.add_log(f"AI: {comment}")
+                self.add_log(f"AI実況: {comment}")
                 self.voice.speak(comment)
         finally:
             self.is_generating = False

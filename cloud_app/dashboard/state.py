@@ -1,4 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+
+JST = timezone(timedelta(hours=9))
 
 
 dashboard_data = {
@@ -11,9 +14,8 @@ dashboard_data = {
 
 
 def add_log(msg):
-    ts = datetime.now().strftime("%H:%M:%S")
+    ts = datetime.now(JST).strftime("%H:%M:%S")
     log_entry = f"[{ts}] {msg}"
     dashboard_data["logs"].append(log_entry)
     if len(dashboard_data["logs"]) > 50:
         dashboard_data["logs"].pop(0)
-
