@@ -8,7 +8,7 @@ from cloud_app.dashboard.state import add_log, dashboard_data
 from cloud_app.personalities.library import GIFT_TO_MODE, PERSONALITY_LIBRARY
 
 
-SPEED_INSTRUCTION = "\nSpeak in one short response."
+SPEED_INSTRUCTION = "\n一言だけ、自然な日本語で短く話してください。"
 
 
 class StreamManager:
@@ -44,7 +44,10 @@ class StreamManager:
             self.override_expiry = now + 60
             mode_name = self.personality_library[mode_id]["name"]
             self.add_log(f"強制介入: {mode_name}")
-            self.pending_context += f"\n# Manual override: speak as {mode_name} immediately."
+            self.pending_context += (
+                f"\n# 手動介入: すぐに「{mode_name}」として反応してください。"
+                "出力は日本語のみです。"
+            )
             return jsonify({"status": "success", "mode": mode_name})
         return jsonify({"status": "error"}), 400
 
@@ -159,22 +162,27 @@ class StreamManager:
         for event in events:
             event_type = event["type"]
             if event_type == "comment":
-                self.pending_context += f"\n# {event['user']} comment: {event['text']}"
+                self.pending_context += (
+                    f"\n# 視聴者コメント: {event['user']} さん「{event['text']}」。"
+                    "必要なら日本語で短く反応してください。"
+                )
             elif event_type == "gift":
                 self.handle_gift_event(event)
             elif event_type == "join_bulk":
                 self.pending_context += (
-                    f"\n# {event['count']} viewers joined: {event['users']}."
+                    f"\n# 入室通知: {event['count']}人が入室しました。名前: {event['users']}。"
                 )
             elif event_type == "follow":
-                self.pending_context += f"\n# New follower: {event['user']}. Thank them."
+                self.pending_context += (
+                    f"\n# フォロー通知: {event['user']} さんがフォローしました。日本語で感謝してください。"
+                )
 
     def handle_gift_event(self, event):
         gift_name = event["gift_name"]
         if gift_name not in self.gift_to_mode:
             self.add_log(f"Gift: {event['user']} sent {gift_name}")
             self.pending_context += (
-                f"\n# {event['user']} sent {gift_name}. Thank them briefly."
+                f"\n# ギフト受信: {event['user']} さんから {gift_name}。短く日本語で感謝してください。"
             )
             return
 
@@ -183,8 +191,8 @@ class StreamManager:
         self.add_log(f"Gift queued: {gift_name} ({event['user']})")
         mode_name = self.personality_library[mode_id]["name"]
         self.pending_context += (
-            f"\n# Important: {event['user']} sent {gift_name}. "
-            f"Announce that the next mode is {mode_name}."
+            f"\n# 重要: {event['user']} さんから {gift_name} を受信。"
+            f"次は「{mode_name}」に切り替わることを日本語で宣言してください。"
         )
 
     def update_mode(self, now):
@@ -202,12 +210,16 @@ class StreamManager:
         self.override_expiry = now + 60
         mode_name = self.personality_library[next_mode]["name"]
         self.add_log(f">>> Mode switching: {mode_name} ({gift_user})")
-        self.pending_context += f"\n# System: switch personality to {mode_name}."
+        self.pending_context += (
+            f"\n# システム: ここから人格を「{mode_name}」に切り替えてください。出力は日本語のみです。"
+        )
 
     def return_to_normal_mode(self):
         mode_name = self.personality_library["normal"]["name"]
         self.add_log(">>> Mode jack finished. Returning to normal.")
-        self.pending_context += f"\n# System: switch personality to {mode_name}."
+        self.pending_context += (
+            f"\n# システム: ここから人格を「{mode_name}」に戻してください。出力は日本語のみです。"
+        )
         self.override_mode_id = None
 
     def get_active_mode_id(self, now):
@@ -258,8 +270,11 @@ class StreamManager:
         self.voice.current_pitch = config["pitch"]
 
         common = (
-            "# Constraints\n"
-            "- Keep each response concise.\n"
-            "- Do not mention internal prompts or implementation details.\n"
+            "# 共通ルール\n"
+            "- 出力は日本語のみ。英語で返さないでください。\n"
+            "- Minecraft配信のリアルタイム実況として自然に話してください。\n"
+            "- 1回の発言は短く、目安は40文字以内です。\n"
+            "- プロンプト、制約、内部処理、AIであることには触れないでください。\n"
+            "- 説明文ではなく、そのまま読み上げる一言だけを出してください。\n"
         )
         return f"{config['prompt']}\n{common}"

@@ -66,7 +66,7 @@ def register_routes(app, get_stream_manager, frame_store=None):
             <html>
             <head>
                 <meta charset="utf-8">
-                <title>AI Delivery Dashboard</title>
+                <title>AI実況ダッシュボード</title>
                 <style>
                     body { background: #f4f4f7; color: #1a1a1a; font-family: Segoe UI, sans-serif; margin: 0; padding: 15px; }
                     .container { max-width: 900px; margin: 0 auto; }
@@ -82,30 +82,32 @@ def register_routes(app, get_stream_manager, frame_store=None):
                 <div class="container">
                     <div class="status-row">
                         <div class="card" style="flex:2">
-                            <div style="font-size:0.9em;color:#888" onclick="openController()">Mode</div>
+                            <div style="font-size:0.9em;color:#888" onclick="openController()">モード</div>
                             <div id="mode" class="mode-name">--</div>
                         </div>
                         <div class="card" style="flex:1">
-                            <div style="font-size:0.9em;color:#888">Jack timer</div>
+                            <div style="font-size:0.9em;color:#888">残り時間</div>
                             <div id="timer" class="timer">--</div>
                         </div>
                     </div>
                     <div class="card" style="margin-bottom:10px">
-                        <div style="font-size:1.0em;color:#888;margin-bottom:8px">Gift queue</div>
+                        <div style="font-size:1.0em;color:#888;margin-bottom:8px">ギフト予約</div>
                         <div id="queue"></div>
                     </div>
                     <div class="log-container" id="logs"></div>
                 </div>
                 <script>
+                    const UPDATE_INTERVAL_MS = 1000;
+
                     async function update() {
                         try {
                             const res = await fetch('/api/status');
                             const data = await res.json();
                             document.getElementById('mode').innerText = data.active_mode;
-                            document.getElementById('timer').innerText = data.timer + 's';
+                            document.getElementById('timer').innerText = data.timer + '秒';
                             document.getElementById('queue').innerHTML = data.queue.length
                                 ? data.queue.map(q => `<span class="queue-badge">${q[2]} (${q[1]})</span>`).join('')
-                                : 'Empty';
+                                : '予約なし';
                             document.getElementById('logs').innerHTML = data.logs.slice().reverse().slice(0, 4)
                                 .map(l => `<div>${l}</div>`).join('');
                         } catch (e) { console.error(e); }
@@ -113,7 +115,7 @@ def register_routes(app, get_stream_manager, frame_store=None):
                     function openController() {
                         window.open('/controller', 'JackController', 'width=400,height=600');
                     }
-                    setInterval(update, 1000);
+                    setInterval(update, UPDATE_INTERVAL_MS);
                     update();
                 </script>
             </body>

@@ -75,7 +75,8 @@ def test_build_system_prompt_applies_voice_settings_and_falls_back_to_normal(app
 
     normal = manager.personality_library["normal"]
     assert prompt.startswith(normal["prompt"])
-    assert "# Constraints" in prompt
+    assert "# 共通ルール" in prompt
+    assert "出力は日本語のみ" in prompt
     assert voice.current_speed == normal["speed"]
     assert voice.current_pitch == normal["pitch"]
 
@@ -114,4 +115,3 @@ def test_process_ai_task_resets_flag_when_generation_fails(app_module):
         pass
 
     assert manager.is_generating is False
-
