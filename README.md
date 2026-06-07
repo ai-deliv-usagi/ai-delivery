@@ -34,6 +34,15 @@ Secret Manager version.
 The Cloud Run app is request-driven. It does not start the stream loop when the
 container boots.
 
+Create a local virtual environment for `local_agent`:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements-local.txt
+```
+
 ```powershell
 $env:CLOUD_APP_URL = "https://your-ai-delivery-app-url"
 python -m local_agent.main

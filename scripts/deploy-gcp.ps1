@@ -84,6 +84,20 @@ function Test-SecretHasVersion($ProjectId, $SecretId) {
     return -not [string]::IsNullOrWhiteSpace($versions)
 }
 
+function Add-SecretVersion($ProjectId, $SecretId, $Value) {
+    $cleanValue = $Value.Trim().TrimStart([char]0xFEFF)
+    $tempFile = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText($tempFile, $cleanValue, [System.Text.UTF8Encoding]::new($false))
+        gcloud secrets versions add $SecretId --project=$ProjectId --data-file=$tempFile
+        if ($LASTEXITCODE -ne 0) {
+            throw "Adding secret version failed for $SecretId."
+        }
+    } finally {
+        Remove-Item -LiteralPath $tempFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Require-Command gcloud
 
 $terraformExe = "terraform"
@@ -121,10 +135,7 @@ foreach ($service in $RequiredServices) {
 Ensure-Secret -ProjectId $ProjectId -SecretId "ai-delivery-api-key"
 if ($env:API_KEY) {
     Write-Host "Adding API_KEY secret version..."
-    $env:API_KEY | gcloud secrets versions add ai-delivery-api-key --project=$ProjectId --data-file=-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Adding API_KEY secret version failed."
-    }
+    Add-SecretVersion -ProjectId $ProjectId -SecretId "ai-delivery-api-key" -Value $env:API_KEY
 } elseif (-not (Test-SecretHasVersion -ProjectId $ProjectId -SecretId "ai-delivery-api-key")) {
     throw "API_KEY is not set and ai-delivery-api-key has no enabled versions. Set API_KEY or add a Secret Manager version manually."
 } else {
