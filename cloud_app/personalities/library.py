@@ -93,6 +93,9 @@ PERSONALITY_LIBRARY = {
 
 GIFT_TO_MODE = {
     "Rose": "nechinechi",
+    "バラ": "nechinechi",
     "Finger Heart": "gal",
+    "フィンガーハート": "gal",
     "Ice Cream": "samurai",
+    "アイスクリーム": "samurai",
 }

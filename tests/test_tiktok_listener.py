@@ -1,4 +1,5 @@
 import time
+import types
 
 
 def test_fetch_events_drains_event_queue(app_module):
@@ -46,3 +47,22 @@ def test_fetch_events_keeps_recent_small_join_buffer(app_module):
     assert events == []
     assert listener.join_buffer == ["alice", "bob"]
 
+
+def test_extract_gift_name_uses_canonical_gift_name(app_module):
+    event = types.SimpleNamespace(gift=types.SimpleNamespace(name="Rose"))
+
+    assert app_module.TikTokListener.extract_gift_name(event) == "Rose"
+
+
+def test_extract_gift_name_falls_back_to_legacy_info_name(app_module):
+    event = types.SimpleNamespace(
+        gift=types.SimpleNamespace(info=types.SimpleNamespace(name="Rose"))
+    )
+
+    assert app_module.TikTokListener.extract_gift_name(event) == "Rose"
+
+
+def test_extract_gift_name_returns_none_when_missing(app_module):
+    event = types.SimpleNamespace(gift=types.SimpleNamespace())
+
+    assert app_module.TikTokListener.extract_gift_name(event) is None

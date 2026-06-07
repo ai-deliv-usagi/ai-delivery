@@ -65,6 +65,33 @@ def test_gift_logs_are_japanese(app_module):
     )
 
 
+def test_gift_matching_accepts_case_and_japanese_aliases(app_module):
+    manager, _voice = make_manager(app_module)
+
+    manager.handle_gift_event({"user": "viewer", "gift_name": "rose"})
+    manager.handle_gift_event({"user": "viewer", "gift_name": "フィンガーハート"})
+
+    assert manager.gift_queue == [
+        ("nechinechi", "viewer", "rose"),
+        ("gal", "viewer", "フィンガーハート"),
+    ]
+
+
+def test_process_frame_drains_gift_events_even_when_busy(app_module):
+    manager, voice = make_manager(app_module)
+    manager.session_active = True
+    voice.is_speaking = True
+    manager.tiktok = types.SimpleNamespace(
+        current_patch_id="normal",
+        fetch_events=lambda: [{"type": "gift", "user": "viewer", "gift_name": "Rose"}],
+    )
+
+    result = manager.process_frame(b"image")
+
+    assert result == {"status": "busy"}
+    assert manager.gift_queue == [("nechinechi", "viewer", "Rose")]
+
+
 def test_mode_switch_logs_are_japanese(app_module):
     manager, _voice = make_manager(app_module)
     manager.gift_queue.append(("gal", "viewer", "Finger Heart"))
@@ -131,6 +158,22 @@ def test_refresh_dashboard_recalculates_timer(app_module):
 
     assert app_module.dashboard_data["active_mode"] == manager.personality_library["gal"]["name"]
     assert 0 < app_module.dashboard_data["timer"] <= 30
+
+
+def test_refresh_dashboard_drains_pending_gift_events(app_module):
+    manager, _voice = make_manager(app_module)
+    manager.session_active = True
+    manager.tiktok = types.SimpleNamespace(
+        current_patch_id="normal",
+        fetch_events=lambda: [{"type": "gift", "user": "viewer", "gift_name": "Rose"}],
+    )
+
+    manager.refresh_dashboard()
+
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["nechinechi"]["name"]
+    assert app_module.dashboard_data["logs"][-1].endswith(
+        ">>> 人格切替: ネチネチOS (viewer さん)"
+    )
 
 
 def test_process_ai_task_speaks_generated_comment_and_resets_flag(app_module):

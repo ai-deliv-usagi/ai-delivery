@@ -33,11 +33,22 @@ class TikTokListener:
 
         @self.client.on(GiftEvent)
         async def on_gift(event):
+            gift_name = self.extract_gift_name(event)
+            if not gift_name:
+                self.event_queue.put(
+                    {
+                        "type": "gift_unknown",
+                        "user": event.user.nickname,
+                        "raw": repr(getattr(event, "gift", None)),
+                    }
+                )
+                return
+
             self.event_queue.put(
                 {
                     "type": "gift",
                     "user": event.user.nickname,
-                    "gift_name": event.gift.info.name,
+                    "gift_name": gift_name,
                 }
             )
 
@@ -48,10 +59,31 @@ class TikTokListener:
     def run_forever(self):
         while True:
             try:
+                self.client.run(fetch_gift_info=True)
+            except TypeError:
                 self.client.run()
             except Exception:
                 dashboard_data["is_online"] = False
                 time.sleep(15)
+
+    @staticmethod
+    def extract_gift_name(event):
+        gift = getattr(event, "gift", None)
+        if gift is None:
+            return None
+
+        for attr in ("name", "gift_name"):
+            value = getattr(gift, attr, None)
+            if value:
+                return value
+
+        info = getattr(gift, "info", None)
+        if info is not None:
+            value = getattr(info, "name", None)
+            if value:
+                return value
+
+        return None
 
     def fetch_events(self):
         events = []
@@ -70,4 +102,3 @@ class TikTokListener:
             self.last_join_time = now
 
         return events
-

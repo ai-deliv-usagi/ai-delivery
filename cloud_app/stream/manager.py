@@ -30,6 +30,10 @@ class StreamManager:
         self.session_active = False
         self.tiktok_thread = None
 
+    @staticmethod
+    def normalize_gift_name(gift_name):
+        return str(gift_name).strip().casefold()
+
     def add_log(self, msg):
         add_log(msg)
 
@@ -114,7 +118,7 @@ class StreamManager:
             return None
 
         now = time.time()
-        self.handle_events(self.tiktok.fetch_events())
+        self.process_pending_events()
         self.update_mode(now)
 
         active_id = self.get_active_mode_id(now)
@@ -123,23 +127,33 @@ class StreamManager:
 
     def refresh_dashboard(self):
         now = time.time()
+        if self.session_active:
+            self.process_pending_events()
         self.update_mode(now)
         active_id = self.get_active_mode_id(now)
         self.update_dashboard(active_id, now)
         return dashboard_data
 
+    def process_pending_events(self):
+        if not hasattr(self.tiktok, "fetch_events"):
+            return []
+
+        events = self.tiktok.fetch_events()
+        self.handle_events(events)
+        return events
+
     def process_frame(self, frame):
         if not self.session_active:
             return {"status": "inactive"}
 
-        if self.voice.is_speaking or self.is_generating:
-            return {"status": "busy"}
-
         now = time.time()
-        self.handle_events(self.tiktok.fetch_events())
+        self.process_pending_events()
         self.update_mode(now)
         active_id = self.get_active_mode_id(now)
         self.update_dashboard(active_id, now)
+
+        if self.voice.is_speaking or self.is_generating:
+            return {"status": "busy"}
 
         sys_prompt = self.build_system_prompt(active_id)
         current_context = self.pending_context
@@ -175,6 +189,8 @@ class StreamManager:
                 )
             elif event_type == "gift":
                 self.handle_gift_event(event)
+            elif event_type == "gift_unknown":
+                self.add_log(f"ギフト名取得失敗: {event['user']} さん ({event['raw']})")
             elif event_type == "join_bulk":
                 self.pending_context += (
                     f"\n# 入室通知: {event['count']}人が入室しました。名前: {event['users']}。"
@@ -186,14 +202,19 @@ class StreamManager:
 
     def handle_gift_event(self, event):
         gift_name = event["gift_name"]
-        if gift_name not in self.gift_to_mode:
+        gift_key = self.normalize_gift_name(gift_name)
+        normalized_gift_to_mode = {
+            self.normalize_gift_name(name): mode_id
+            for name, mode_id in self.gift_to_mode.items()
+        }
+        if gift_key not in normalized_gift_to_mode:
             self.add_log(f"ギフト受信: {event['user']} さんから {gift_name}")
             self.pending_context += (
                 f"\n# ギフト受信: {event['user']} さんから {gift_name}。短く日本語で感謝してください。"
             )
             return
 
-        mode_id = self.gift_to_mode[gift_name]
+        mode_id = normalized_gift_to_mode[gift_key]
         self.gift_queue.append((mode_id, event["user"], gift_name))
         self.add_log(f"ギフト予約: {gift_name} ({event['user']} さん)")
         mode_name = self.personality_library[mode_id]["name"]
