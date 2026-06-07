@@ -149,6 +149,17 @@ def test_build_system_prompt_applies_voice_settings_and_falls_back_to_normal(app
     assert voice.current_pitch == normal["pitch"]
 
 
+def test_refresh_dashboard_recalculates_timer(app_module):
+    manager, _voice = make_manager(app_module)
+    manager.override_mode_id = "gal"
+    manager.override_expiry = time.time() + 30
+
+    manager.refresh_dashboard()
+
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["gal"]["name"]
+    assert 0 < app_module.dashboard_data["timer"] <= 30
+
+
 def test_process_ai_task_speaks_generated_comment_and_resets_flag(app_module):
     manager, voice = make_manager(app_module)
     manager.is_generating = True
