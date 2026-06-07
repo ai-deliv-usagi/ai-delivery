@@ -1,15 +1,16 @@
 locals {
   required_services = toset([
     "artifactregistry.googleapis.com",
+    "aiplatform.googleapis.com",
     "cloudbuild.googleapis.com",
     "run.googleapis.com",
-    "secretmanager.googleapis.com",
     "storage.googleapis.com",
   ])
 
   app_env = {
     GEMINI_MODEL_ID     = var.gemini_model_id
-    TIKTOK_UNIQUE_ID    = var.tiktok_unique_id
+    GCP_PROJECT_ID      = var.project_id
+    VERTEX_AI_LOCATION  = var.vertex_ai_location
     VOICEVOX_SPEAKER_ID = tostring(var.voicevox_speaker_id)
     VOICEVOX_URL        = google_cloud_run_v2_service.voicevox.uri
     AUDIO_BUCKET_NAME   = google_storage_bucket.audio.name
@@ -90,9 +91,9 @@ resource "google_service_account" "app" {
   depends_on = [google_project_service.required]
 }
 
-resource "google_project_iam_member" "app_secret_accessor" {
+resource "google_project_iam_member" "app_vertex_ai_user" {
   project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
+  role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.app.email}"
 }
 
@@ -160,17 +161,9 @@ resource "google_cloud_run_v2_service" "app" {
         }
       }
 
-      env {
-        name = "API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = var.api_key_secret_id
-            version = "latest"
-          }
-        }
-      }
-
       resources {
+        cpu_idle = false
+
         limits = {
           cpu    = "1"
           memory = "512Mi"
@@ -180,7 +173,7 @@ resource "google_cloud_run_v2_service" "app" {
   }
 
   depends_on = [
-    google_project_iam_member.app_secret_accessor,
+    google_project_iam_member.app_vertex_ai_user,
     google_storage_bucket_iam_member.app_audio_admin,
     google_cloud_run_v2_service.voicevox,
   ]

@@ -2,8 +2,14 @@ import time
 import types
 
 
+def make_listener(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    return LocalTikTokListener(unique_id="@example")
+
+
 def test_fetch_events_drains_event_queue(app_module):
-    listener = app_module.TikTokListener(unique_id="@example")
+    listener = make_listener(app_module)
     listener.event_queue.put({"type": "comment", "user": "alice", "text": "hello"})
     listener.event_queue.put({"type": "follow", "user": "bob"})
 
@@ -16,8 +22,23 @@ def test_fetch_events_drains_event_queue(app_module):
     assert listener.event_queue.empty()
 
 
+def test_enqueue_status_adds_tiktok_status_event(app_module):
+    listener = make_listener(app_module)
+
+    listener.enqueue_status("error", "TikTokLive接続エラー: boom")
+
+    assert listener.fetch_events() == [
+        {
+            "type": "tiktok_status",
+            "status": "error",
+            "label": "接続エラー",
+            "message": "TikTokLive接続エラー: boom",
+        }
+    ]
+
+
 def test_fetch_events_groups_three_or_more_joined_users(app_module):
-    listener = app_module.TikTokListener(unique_id="@example")
+    listener = make_listener(app_module)
     listener.join_buffer = ["alice", "bob", "carol"]
 
     events = listener.fetch_events()
@@ -27,7 +48,7 @@ def test_fetch_events_groups_three_or_more_joined_users(app_module):
 
 
 def test_fetch_events_groups_stale_join_buffer(app_module):
-    listener = app_module.TikTokListener(unique_id="@example")
+    listener = make_listener(app_module)
     listener.join_buffer = ["alice"]
     listener.last_join_time = time.time() - 11
 
@@ -38,7 +59,7 @@ def test_fetch_events_groups_stale_join_buffer(app_module):
 
 
 def test_fetch_events_keeps_recent_small_join_buffer(app_module):
-    listener = app_module.TikTokListener(unique_id="@example")
+    listener = make_listener(app_module)
     listener.join_buffer = ["alice", "bob"]
     listener.last_join_time = time.time()
 
@@ -49,20 +70,71 @@ def test_fetch_events_keeps_recent_small_join_buffer(app_module):
 
 
 def test_extract_gift_name_uses_canonical_gift_name(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
     event = types.SimpleNamespace(gift=types.SimpleNamespace(name="Rose"))
 
-    assert app_module.TikTokListener.extract_gift_name(event) == "Rose"
+    assert LocalTikTokListener.extract_gift_name(event) == "Rose"
 
 
 def test_extract_gift_name_falls_back_to_legacy_info_name(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
     event = types.SimpleNamespace(
         gift=types.SimpleNamespace(info=types.SimpleNamespace(name="Rose"))
     )
 
-    assert app_module.TikTokListener.extract_gift_name(event) == "Rose"
+    assert LocalTikTokListener.extract_gift_name(event) == "Rose"
 
 
 def test_extract_gift_name_returns_none_when_missing(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
     event = types.SimpleNamespace(gift=types.SimpleNamespace())
 
-    assert app_module.TikTokListener.extract_gift_name(event) is None
+    assert LocalTikTokListener.extract_gift_name(event) is None
+
+
+def test_streaking_gift_event_is_in_progress(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        streaking=True,
+        gift=types.SimpleNamespace(name="Rose", type=1),
+    )
+
+    assert LocalTikTokListener.is_streak_in_progress(event) is True
+
+
+def test_finished_streak_gift_event_is_not_in_progress(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        streaking=False,
+        repeat_count=5,
+        gift=types.SimpleNamespace(name="Rose", type=1),
+    )
+
+    assert LocalTikTokListener.is_streak_in_progress(event) is False
+    assert LocalTikTokListener.extract_repeat_count(event) == 5
+
+
+def test_repeat_end_zero_gift_event_is_in_progress(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        repeat_end=0,
+        gift=types.SimpleNamespace(name="Rose", type=1),
+    )
+
+    assert LocalTikTokListener.is_streak_in_progress(event) is True
+
+
+def test_non_streakable_gift_event_is_not_in_progress(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        gift=types.SimpleNamespace(name="Gift", type=0),
+    )
+
+    assert LocalTikTokListener.is_streak_in_progress(event) is False

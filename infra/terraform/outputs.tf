@@ -13,16 +13,6 @@ output "audio_bucket_name" {
   value       = google_storage_bucket.audio.name
 }
 
-output "api_key_secret_id" {
-  description = "Secret Manager secret ID used for Gemini API key."
-  value       = var.api_key_secret_id
-}
-
-output "tiktok_unique_id" {
-  description = "TikTok Live unique ID configured for the app."
-  value       = var.tiktok_unique_id
-}
-
 output "artifact_registry_repository" {
   description = "Artifact Registry repository resource."
   value       = google_artifact_registry_repository.app.name

@@ -7,6 +7,7 @@ import pygame
 
 from local_agent.capture.minecraft import MinecraftCapturer
 from local_agent.client.cloud_api import CloudApiClient
+from local_agent.tiktok.listener import LocalTikTokListener
 
 
 def log(message):
@@ -35,6 +36,7 @@ def main():
     cloud_url = os.getenv("CLOUD_APP_URL", "http://127.0.0.1:5000")
     interval = float(os.getenv("CAPTURE_INTERVAL_SECONDS", "1.0"))
     window_title = os.getenv("MINECRAFT_WINDOW_TITLE", "Minecraft")
+    tiktok_unique_id = os.getenv("TIKTOK_UNIQUE_ID", "").strip()
 
     log(f"Starting with CLOUD_APP_URL={cloud_url}")
     log(f"Capture interval: {interval}s, window title: {window_title}")
@@ -46,10 +48,27 @@ def main():
     start_result = client.start_session()
     log(f"Session start: {start_result}")
 
+    tiktok_listener = None
+    if tiktok_unique_id:
+        tiktok_listener = LocalTikTokListener(unique_id=tiktok_unique_id, log=log)
+        tiktok_listener.start()
+        log(f"TikTokLive listener started: {tiktok_unique_id}")
+    else:
+        log("TIKTOK_UNIQUE_ID is not set. TikTokLive listener is disabled.")
+
     last_no_frame_log = 0
     frame_count = 0
     try:
         while True:
+            if tiktok_listener:
+                events = tiktok_listener.fetch_events()
+                if events:
+                    try:
+                        event_result = client.send_events(events)
+                        log(f"Sent TikTok events: {event_result}")
+                    except Exception as exc:
+                        log(f"Failed to send TikTok events: {exc}")
+
             frame = capturer.get_frame_bytes()
             if frame:
                 frame_count += 1

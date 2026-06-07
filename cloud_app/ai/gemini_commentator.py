@@ -3,8 +3,12 @@ from google.genai import types
 
 
 class AICommentator:
-    def __init__(self, api_key, model_id):
-        self.client = genai.Client(api_key=api_key)
+    def __init__(self, model_id, project_id, location):
+        self.client = genai.Client(
+            vertexai=True,
+            project=project_id,
+            location=location,
+        )
         self.model_id = model_id
         self.history = []
         self.chat = self.client.chats.create(model=self.model_id)
@@ -33,4 +37,3 @@ class AICommentator:
         except Exception as exc:
             print(f"AI generation error: {exc}")
             return None
-

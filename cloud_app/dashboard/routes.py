@@ -62,6 +62,19 @@ def register_routes(app, get_stream_manager, frame_store=None):
             result["audio_encoding"] = "base64"
         return jsonify(result)
 
+    @app.route("/api/events", methods=["POST"])
+    def receive_events():
+        payload = request.get_json(silent=True) or {}
+        events = payload.get("events")
+        if not isinstance(events, list):
+            return jsonify({"status": "error", "message": "events must be a list"}), 400
+
+        stream_manager = _get_stream_manager(get_stream_manager)
+        if not stream_manager:
+            return jsonify({"status": "error", "message": "stream manager is unavailable"}), 500
+
+        return jsonify(stream_manager.submit_events(events))
+
     @app.route("/controller")
     def controller():
         stream_manager = _get_stream_manager(get_stream_manager)
