@@ -20,9 +20,9 @@ frame_store = FrameStore()
 stream_manager = None
 
 
-def get_stream_manager():
+def get_stream_manager(create=True):
     global stream_manager
-    if stream_manager is None:
+    if stream_manager is None and create:
         stream_manager = create_stream_manager()
     return stream_manager
 
