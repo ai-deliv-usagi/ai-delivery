@@ -250,6 +250,14 @@ def test_build_system_prompt_applies_voice_settings_and_falls_back_to_normal(app
     assert voice.current_pitch == normal["pitch"]
 
 
+def test_speed_instruction_discourages_too_short_replies(app_module):
+    from cloud_app.stream.manager import SPEED_INSTRUCTION
+
+    assert "一息で読める自然な日本語" in SPEED_INSTRUCTION
+    assert "短すぎる相づち" in SPEED_INSTRUCTION
+    assert "同じ言い回しを続けない" in SPEED_INSTRUCTION
+
+
 def test_refresh_dashboard_recalculates_timer(app_module):
     manager, _voice = make_manager(app_module)
     manager.override_mode_id = "gal"
@@ -320,6 +328,33 @@ def test_tiktok_status_event_is_logged(app_module):
     assert app_module.dashboard_data["logs"][-1].endswith(
         "TikTokLive [接続エラー] TikTokLive接続エラー: boom"
     )
+
+
+def test_join_bulk_context_requests_varied_welcome(app_module):
+    manager, _voice = make_manager(app_module)
+
+    manager.handle_events(
+        [{"type": "join_bulk", "count": 2, "users": "alice, bob"}]
+    )
+
+    assert "入室通知: 2人が入室しました。名前: alice, bob。" in manager.pending_context
+    assert "みなさんいらっしゃい" in manager.pending_context
+    assert "直近の発言と違う角度" in manager.pending_context
+    assert "画面の状況に絡める" in manager.pending_context
+
+
+def test_build_system_prompt_asks_to_avoid_repeated_phrasing(app_module):
+    manager, _voice = make_manager(app_module)
+
+    prompt = manager.build_system_prompt("normal")
+
+    assert "目安は25〜70文字" in prompt
+    assert "単語だけ、相づちだけ、挨拶だけで終わらせず" in prompt
+    assert "Recent logs と同じ文や同じ言い回しを繰り返さず" in prompt
+    assert "通知文をそのまま読まず" in prompt
+    assert "入室が続く時も" in prompt
+    assert "観察、感情、比喩、軽いツッコミ、期待、視聴者への呼びかけ" in prompt
+    assert "画面に変化が少ない時" in prompt
 
 
 def test_tick_events_advances_queued_mode_without_frame_or_status_request(app_module):
