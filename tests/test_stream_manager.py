@@ -98,7 +98,7 @@ def test_start_and_stop_session_are_persisted(app_module):
     assert store.saved[-1]["session_active"] is True
 
     manager.override_mode_id = "gal"
-    manager.gift_queue.append(("samurai", "viewer", "Ice Cream"))
+    manager.gift_queue.append(("metan", "viewer", "Ice Cream"))
     manager.stop_session()
     assert store.saved[-1]["session_active"] is False
     assert store.saved[-1]["gift_queue"] == []
@@ -110,7 +110,7 @@ def test_stream_state_is_restored_on_new_manager(app_module, monkeypatch):
         "session_active": True,
         "override_mode_id": "gal",
         "override_expiry": time.time() + 30,
-        "gift_queue": [["samurai", "viewer", "Ice Cream"]],
+        "gift_queue": [["metan", "viewer", "Ice Cream"]],
         "pending_context": "pending",
         "current_gen_id": 123,
     }
@@ -121,7 +121,7 @@ def test_stream_state_is_restored_on_new_manager(app_module, monkeypatch):
 
     assert manager.session_active is True
     assert manager.override_mode_id == "gal"
-    assert manager.gift_queue == [("samurai", "viewer", "Ice Cream")]
+    assert manager.gift_queue == [("metan", "viewer", "Ice Cream")]
     assert manager.pending_context == "pending"
     assert manager.current_gen_id == 123
     assert app_module.dashboard_data["active_mode"] == manager.personality_library["gal"]["name"]
@@ -149,8 +149,8 @@ def test_gift_matching_accepts_case_and_japanese_aliases(app_module):
     manager.handle_gift_event({"user": "viewer", "gift_name": "フィンガーハート"})
 
     assert manager.gift_queue == [
-        ("nechinechi", "viewer", "rose"),
-        ("gal", "viewer", "フィンガーハート"),
+        ("zundamon", "viewer", "rose"),
+        ("tsumugi", "viewer", "フィンガーハート"),
     ]
 
 
@@ -160,7 +160,7 @@ def test_duplicate_gift_event_is_not_queued_twice(app_module):
     manager.handle_gift_event({"user": "viewer", "gift_name": "Rose"})
     manager.handle_gift_event({"user": "viewer", "gift_name": "Rose"})
 
-    assert manager.gift_queue == [("nechinechi", "viewer", "Rose")]
+    assert manager.gift_queue == [("zundamon", "viewer", "Rose")]
 
 
 def test_duplicate_gift_event_expires_after_window(app_module, monkeypatch):
@@ -173,8 +173,8 @@ def test_duplicate_gift_event_expires_after_window(app_module, monkeypatch):
     manager.handle_gift_event({"user": "viewer", "gift_name": "Rose"})
 
     assert manager.gift_queue == [
-        ("nechinechi", "viewer", "Rose"),
-        ("nechinechi", "viewer", "Rose"),
+        ("zundamon", "viewer", "Rose"),
+        ("zundamon", "viewer", "Rose"),
     ]
 
 
@@ -190,16 +190,16 @@ def test_process_frame_drains_gift_events_even_when_busy(app_module):
     result = manager.process_frame(b"image")
 
     assert result == {"status": "busy"}
-    assert manager.gift_queue == [("nechinechi", "viewer", "Rose")]
+    assert manager.gift_queue == [("zundamon", "viewer", "Rose")]
 
 
 def test_mode_switch_logs_are_japanese(app_module):
     manager, _voice = make_manager(app_module)
-    manager.gift_queue.append(("gal", "viewer", "Finger Heart"))
+    manager.gift_queue.append(("tsumugi", "viewer", "Finger Heart"))
 
     manager.activate_next_gift_mode(time.time())
     assert app_module.dashboard_data["logs"][-1].endswith(
-        ">>> 人格切替: ギャルOS (viewer さん)"
+        ">>> 人格切替: 春日部つむぎ (viewer さん)"
     )
 
     manager.return_to_normal_mode()
@@ -248,6 +248,7 @@ def test_build_system_prompt_applies_voice_settings_and_falls_back_to_normal(app
     assert "出力は日本語のみ" in prompt
     assert voice.current_speed == normal["speed"]
     assert voice.current_pitch == normal["pitch"]
+    assert voice.current_speaker_id == normal["speaker_id"]
 
 
 def test_speed_instruction_discourages_too_short_replies(app_module):
@@ -260,12 +261,12 @@ def test_speed_instruction_discourages_too_short_replies(app_module):
 
 def test_refresh_dashboard_recalculates_timer(app_module):
     manager, _voice = make_manager(app_module)
-    manager.override_mode_id = "gal"
+    manager.override_mode_id = "tsumugi"
     manager.override_expiry = time.time() + 30
 
     manager.refresh_dashboard()
 
-    assert app_module.dashboard_data["active_mode"] == manager.personality_library["gal"]["name"]
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["tsumugi"]["name"]
     assert 0 < app_module.dashboard_data["timer"] <= 30
 
 
@@ -279,9 +280,9 @@ def test_refresh_dashboard_drains_pending_gift_events(app_module):
 
     manager.refresh_dashboard()
 
-    assert app_module.dashboard_data["active_mode"] == manager.personality_library["nechinechi"]["name"]
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["zundamon"]["name"]
     assert app_module.dashboard_data["logs"][-1].endswith(
-        ">>> 人格切替: ネチネチOS (viewer さん)"
+        ">>> 人格切替: ずんだもん (viewer さん)"
     )
 
 
@@ -297,8 +298,8 @@ def test_submit_events_accepts_external_events_and_updates_dashboard(app_module)
     )
 
     assert result == {"status": "accepted", "accepted": 1}
-    assert manager.override_mode_id == "nechinechi"
-    assert app_module.dashboard_data["active_mode"] == manager.personality_library["nechinechi"]["name"]
+    assert manager.override_mode_id == "zundamon"
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["zundamon"]["name"]
 
 
 def test_submit_events_persists_gift_queue(app_module):
@@ -308,7 +309,7 @@ def test_submit_events_persists_gift_queue(app_module):
 
     manager.submit_events([{"type": "gift", "user": "viewer", "gift_name": "Rose"}])
 
-    assert store.saved[-1]["override_mode_id"] == "nechinechi"
+    assert store.saved[-1]["override_mode_id"] == "zundamon"
     assert store.saved[-1]["session_active"] is True
 
 
@@ -360,16 +361,16 @@ def test_build_system_prompt_asks_to_avoid_repeated_phrasing(app_module):
 def test_tick_events_advances_queued_mode_without_frame_or_status_request(app_module):
     manager, _voice = make_manager(app_module)
     manager.session_active = True
-    manager.override_mode_id = "gal"
+    manager.override_mode_id = "tsumugi"
     manager.override_expiry = time.time() - 1
-    manager.gift_queue.append(("samurai", "viewer", "Ice Cream"))
+    manager.gift_queue.append(("metan", "viewer", "Ice Cream"))
 
     manager.tick_events()
 
-    assert manager.override_mode_id == "samurai"
-    assert app_module.dashboard_data["active_mode"] == manager.personality_library["samurai"]["name"]
+    assert manager.override_mode_id == "metan"
+    assert app_module.dashboard_data["active_mode"] == manager.personality_library["metan"]["name"]
     assert app_module.dashboard_data["logs"][-1].endswith(
-        ">>> 人格切替: 侍OS (viewer さん)"
+        ">>> 人格切替: 四国めたん (viewer さん)"
     )
 
 
@@ -407,3 +408,102 @@ def test_process_ai_task_resets_flag_when_generation_fails(app_module):
         pass
 
     assert manager.is_generating is False
+
+
+def test_mode_switch_resets_output_and_updates_character_dashboard(app_module):
+    manager, voice = make_manager(app_module)
+    manager.is_generating = True
+    manager.gift_queue.append(("tsumugi", "viewer", "Finger Heart"))
+
+    manager.activate_next_gift_mode(time.time())
+    manager.update_dashboard("tsumugi", time.time())
+
+    assert manager.is_generating is False
+    assert voice.stop_count == 1
+    assert app_module.dashboard_data["active_mode_id"] == "tsumugi"
+    assert app_module.dashboard_data["character_image"] == manager.personality_library["tsumugi"]["character_image"]
+    assert app_module.dashboard_data["voicevox_speaker_id"] == manager.personality_library["tsumugi"]["speaker_id"]
+
+
+def test_stale_generation_is_discarded_after_character_reset(app_module):
+    manager, voice = make_manager(app_module)
+    manager.current_gen_id = 1
+    manager.is_generating = True
+    manager.ai = types.SimpleNamespace(generate_comment=lambda *_args, **_kwargs: "old comment")
+
+    manager.process_ai_task(b"image", "system", "speed", "context", generation_id=0)
+
+    assert voice.spoken == []
+    assert manager.is_generating is False
+
+
+def test_character_prompt_supports_pokemon_actions_and_viewer_interaction(app_module):
+    manager, _voice = make_manager(app_module)
+
+    prompt = manager.build_system_prompt("zundamon")
+
+    assert "ずんだもん" in prompt
+    assert "ポケモンバトル" in prompt
+    assert "作戦を助言する参謀" in prompt
+    assert "配信者が手動で選べる次の一手" in prompt
+    assert "直接操作している" in prompt
+    assert "ポケモン参謀UI入力" in prompt
+    assert "画面OCRや推測よりもそのテキストを優先" in prompt
+    assert manager.personality_library["zundamon"]["action_style"] in prompt
+    assert "TikTok Liveでは視聴者交流を優先" in prompt
+
+
+def test_dashboard_exposes_active_character_name(app_module):
+    manager, _voice = make_manager(app_module)
+
+    manager.update_dashboard("zundamon", time.time())
+
+    assert app_module.dashboard_data["active_character"] == "ずんだもん"
+
+
+def test_format_pokemon_battle_context_includes_manual_ui_state(app_module):
+    from cloud_app.stream.manager import format_pokemon_battle_context
+
+    context = format_pokemon_battle_context(
+        {
+            "phase": "move selection",
+            "own_active": "Pikachu 80%",
+            "available_actions": "Thunderbolt / Quick Attack",
+            "field": "Electric Terrain",
+            "turn_history": ["T1: switch", "T2: Thunderbolt"],
+        }
+    )
+
+    assert "# ポケモン参謀UI入力" in context
+    assert "- フェーズ: move selection" in context
+    assert "- 選択可能な行動: Thunderbolt / Quick Attack" in context
+    assert "- フィールド情報: Electric Terrain" in context
+    assert "- 直近ターン履歴: T1: switch / T2: Thunderbolt" in context
+
+
+def test_process_frame_appends_pokemon_battle_context(app_module):
+    manager, _voice = make_manager(app_module)
+    manager.session_active = True
+    app_module.dashboard_data["pokemon_battle_state"] = {
+        "phase": "move selection",
+        "own_active": "Pikachu 80%",
+        "own_bench": "",
+        "available_actions": "Thunderbolt",
+        "opponent": "Charizard 60%",
+        "field": "sun",
+        "turn_history": ["T1: switch"],
+        "notes": "攻めたい",
+    }
+    calls = {}
+
+    def generate_comment(frame, system_prompt, extra_context):
+        calls["extra_context"] = extra_context
+        return "10まんボルトが良さそう"
+
+    manager.ai = types.SimpleNamespace(generate_comment=generate_comment)
+
+    result = manager.process_frame(b"image")
+
+    assert result["status"] == "ok"
+    assert "# ポケモン参謀UI入力" in calls["extra_context"]
+    assert "Thunderbolt" in calls["extra_context"]

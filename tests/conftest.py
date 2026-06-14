@@ -108,6 +108,10 @@ def app_module(monkeypatch):
     module.dashboard_data.update(
         {
             "active_mode": "Initializing...",
+            "active_mode_id": "normal",
+            "active_character": "",
+            "character_image": "",
+            "voicevox_speaker_id": None,
             "timer": 0,
             "queue": [],
             "logs": [],

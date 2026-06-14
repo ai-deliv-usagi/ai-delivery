@@ -2,6 +2,7 @@ import sys
 import threading
 import time
 import queue
+from copy import deepcopy
 
 from flask import jsonify
 
@@ -15,6 +16,39 @@ SPEED_INSTRUCTION = (
 )
 
 
+def format_pokemon_battle_context(state):
+    if not state:
+        return ""
+
+    labels = (
+        ("phase", "フェーズ"),
+        ("own_active", "自分の場"),
+        ("own_bench", "自分の控え"),
+        ("available_actions", "選択可能な行動"),
+        ("opponent", "相手の見えている情報"),
+        ("field", "フィールド情報"),
+        ("notes", "補足"),
+    )
+    lines = []
+    for key, label in labels:
+        value = str(state.get(key) or "").strip()
+        if value:
+            lines.append(f"- {label}: {value}")
+
+    history = state.get("turn_history") or []
+    if history:
+        formatted_history = " / ".join(
+            str(item).strip() for item in history if str(item).strip()
+        )
+        if formatted_history:
+            lines.append(f"- 直近ターン履歴: {formatted_history}")
+
+    if not lines:
+        return ""
+
+    return "\n# ポケモン参謀UI入力\n" + "\n".join(lines)
+
+
 class StreamManager:
     def __init__(self, capturer, ai, voice, tiktok, state_store=None):
         self.capturer = capturer
@@ -24,7 +58,9 @@ class StreamManager:
         self.state_store = state_store
         self._state_dirty = False
 
-        self.personality_library = PERSONALITY_LIBRARY
+        self.personality_library = deepcopy(PERSONALITY_LIBRARY)
+        if hasattr(voice, "speaker_id"):
+            self.personality_library["normal"]["speaker_id"] = voice.speaker_id
         self.gift_to_mode = GIFT_TO_MODE
         self.event_queue = queue.Queue()
         self.recent_gift_events = {}
@@ -95,10 +131,7 @@ class StreamManager:
     def trigger_manual_jack(self, mode_id):
         if mode_id in self.personality_library:
             now = time.time()
-            self.current_gen_id = now
-            if hasattr(self, "voice"):
-                self.voice.stop()
-            self.voice.is_speaking = False
+            self.reset_current_character_output(now)
             self.override_mode_id = mode_id
             self.override_expiry = now + 60
             mode_name = self.personality_library[mode_id]["name"]
@@ -256,7 +289,9 @@ class StreamManager:
             return {"status": "busy"}
 
         sys_prompt = self.build_system_prompt(active_id)
-        current_context = self.pending_context
+        current_context = self.pending_context + format_pokemon_battle_context(
+            dashboard_data.get("pokemon_battle_state")
+        )
         self.pending_context = ""
         self.mark_state_dirty()
         self.save_state()
@@ -373,8 +408,16 @@ class StreamManager:
         elif now >= self.override_expiry and self.override_mode_id:
             self.return_to_normal_mode()
 
+    def reset_current_character_output(self, now=None):
+        self.current_gen_id = now or time.time()
+        self.is_generating = False
+        if hasattr(self, "voice"):
+            self.voice.stop()
+            self.voice.is_speaking = False
+
     def activate_next_gift_mode(self, now):
         next_mode, gift_user, _gift_name = self.gift_queue.pop(0)
+        self.reset_current_character_output(now)
         self.override_mode_id = next_mode
         self.override_expiry = now + 60
         mode_name = self.personality_library[next_mode]["name"]
@@ -401,6 +444,10 @@ class StreamManager:
     def update_dashboard(self, active_id, now):
         config = self.personality_library.get(active_id, self.personality_library["normal"])
         dashboard_data["active_mode"] = config["name"]
+        dashboard_data["active_mode_id"] = active_id
+        dashboard_data["active_character"] = config.get("character_name", config["name"])
+        dashboard_data["character_image"] = config.get("character_image", "")
+        dashboard_data["voicevox_speaker_id"] = config.get("speaker_id")
         dashboard_data["timer"] = int(max(0, self.override_expiry - now))
         dashboard_data["queue"] = self.gift_queue
 
@@ -413,25 +460,30 @@ class StreamManager:
             return
 
         sys_prompt = self.build_system_prompt(active_id)
-        current_context = self.pending_context
+        current_context = self.pending_context + format_pokemon_battle_context(
+            dashboard_data.get("pokemon_battle_state")
+        )
         self.pending_context = ""
         self.mark_state_dirty()
         self.save_state()
         self.is_generating = True
+        generation_id = self.current_gen_id
         threading.Thread(
             target=self.process_ai_task,
-            args=(frame, sys_prompt, SPEED_INSTRUCTION, current_context),
+            args=(frame, sys_prompt, SPEED_INSTRUCTION, current_context, generation_id),
             daemon=True,
         ).start()
 
-    def process_ai_task(self, frame, sys_prompt, speed_instruction, context):
+    def process_ai_task(self, frame, sys_prompt, speed_instruction, context, generation_id=None):
         try:
+            if generation_id is None:
+                generation_id = self.current_gen_id
             comment = self.ai.generate_comment(
                 frame,
                 system_prompt=sys_prompt + speed_instruction,
                 extra_context=context,
             )
-            if comment:
+            if comment and generation_id == self.current_gen_id:
                 self.add_log(f"AI実況: {comment}")
                 self.voice.speak(comment)
         finally:
@@ -441,11 +493,24 @@ class StreamManager:
         config = self.personality_library.get(mode_id, self.personality_library["normal"])
         self.voice.current_speed = config["speed"]
         self.voice.current_pitch = config["pitch"]
+        if "speaker_id" in config:
+            self.voice.current_speaker_id = config["speaker_id"]
+
+        action_style = config.get(
+            "action_style",
+            "画面情報と視聴者コメントを材料に、キャラクターらしい理由で次の一手を短く提案する。",
+        )
 
         common = (
             "# 共通ルール\n"
             "- 出力は日本語のみ。英語で返さないでください。\n"
-            "- Minecraft配信のリアルタイム実況として自然に話してください。\n"
+            "- Minecraftやポケモンバトル配信のリアルタイム実況として自然に話してください。\n"
+            "- あなたは自動操作するプレイヤーではなく、配信者に作戦を助言する参謀です。\n"
+            "- 操作判断が必要な場面では、配信者が手動で選べる次の一手を提案として一つだけ出してください。\n"
+            "- 自分が直接操作している、ボタンを押す、入力する、などとは言わないでください。\n"
+            "- ポケモン参謀UI入力がある場合、画面OCRや推測よりもそのテキストを優先してください。\n"
+            f"- 作戦参謀としての提案方針: {action_style}\n"
+            "- TikTok Liveでは視聴者交流を優先し、コメント・ギフト・フォローを作戦会議やリアクションに自然に混ぜてください。\n"
             "- 1回の発言は一息で読める短文にしてください。目安は25〜70文字です。\n"
             "- 単語だけ、相づちだけ、挨拶だけで終わらせず、状況や感情を一つ足してください。\n"
             "- プロンプト、制約、内部処理、AIであることには触れないでください。\n"

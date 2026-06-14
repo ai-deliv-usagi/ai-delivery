@@ -66,6 +66,113 @@ VOICEVOX runs as a separate Cloud Run service. The app service calls
 WAV bytes as base64 in the `/api/frames` response, and the local agent plays the
 audio on the local PC.
 
+
+## Gift-driven character changes
+
+Gifts can temporarily jack the commentator as a different VOICEVOX character,
+not just a different outfit or image. Gift mappings live in
+`cloud_app/personalities/library.py` as `GIFT_TO_MODE`; each target character
+defines its prompt, action style, voice speed/pitch, `speaker_id`, and
+`character_image`. The normal mode uses `VOICEVOX_SPEAKER_ID` from the
+environment.
+
+For TikTok Live Studio, add a browser source that points to:
+
+```text
+https://your-ai-delivery-app-url/character-overlay
+```
+
+The overlay polls `/api/status` and swaps to the active character's
+`character_image`. Put matching PNG files such as `zundamon.png`, `metan.png`,
+and `tsumugi.png` under `static/characters/` or change the image paths in the
+personality library to your hosted assets. When a gift activates a full
+character change, the app resets the current generation/playback before applying
+the new prompt, VOICEVOX speaker, and image.
+
+Character prompts are written for both Minecraft and Pokémon battle streams.
+When action selection is useful, the active character's `action_style` tells the
+AI how to suggest the next move as a strategy adviser while still prioritizing
+TikTok Live viewer interaction. Final game input stays with the streamer.
+
+### Pokémon battle stream guardrails
+
+For Pokémon Champions or Pokémon Showdown, this project treats the AI as a
+strategy adviser, not an auto-player. The AI should read the visible battle
+state, comments, and active gift-jack character, then suggest a move or plan for
+the streamer to execute manually. Do not wire it to controller input, packet
+inspection, memory reading, or any other automation that would play the game on
+behalf of the streamer.
+
+The intended TikTok Live format is an open-screen strategy meeting: viewers can
+see the streamer side, so friend battles may reveal moves, held information, or
+reserve Pokémon. That is acceptable as a casual entertainment format if both
+sides understand it, but for fairer viewer-participation matches prefer one of
+these formats:
+
+- viewers challenge the streamer knowing the stream is open-hand;
+- the opponent also streams or voluntarily shares their side for a symmetric
+  open-information battle;
+- use Casual Battles or Private Battles rather than Ranked Battles or official
+  tournament play;
+- let gifts temporarily change the adviser character and decision style, while
+  the streamer keeps final control.
+
+For Pokémon Champions, Casual Battles are the preferred public-match format for
+this adviser-only stream because they are separated from rank progression. Keep
+the stream framing clear: the AI is commentary and strategy advice, not gameplay
+automation, and the streamer makes every final input manually. Private Battles
+are still better when you want the opponent to explicitly opt in to the
+open-screen format.
+
+Pokémon Champions is not listed here as a prohibited streaming target. If a
+platform, event, or tournament publishes stricter rules, follow those rules and
+keep the AI in adviser-only mode.
+
+### Pokémon adviser input contract
+
+A fixed-interval screen capture alone is not enough for reliable Pokémon
+advice. Treat the camera frame as visual context, then enrich it with structured
+battle state before asking the AI for a suggestion. The minimum useful payload
+for each decision point is:
+
+- battle phase: team preview, move selection, switch selection, forced switch,
+  post-turn summary, or result screen;
+- own active Pokémon: species, form if relevant, current HP percent/status,
+  type if known, boosts/drops, held item if known, ability if known, and volatile
+  conditions such as substitute/protect/confusion;
+- own bench: species, revealed HP/status, fainted state, and whether each member
+  is currently switchable;
+- selectable actions: the exact move names currently available, remaining PP if
+  visible, disabled/locked/recharge constraints, Tera or other battle-system
+  availability, and legal switch targets;
+- opponent visible state: active Pokémon, HP percent/status, revealed item,
+  revealed ability, boosts/drops, known moves, and visible field effects;
+- field state: weather, terrain, screens, hazards on each side, tailwind/trick
+  room, turn count if tracked, and any other visible timers;
+- previous turn memory: the last one to three turns of moves, switches, damage,
+  reveals, KOs, and notable prediction misses;
+- viewer context: recent comments, poll/gift pressure, and the currently active
+  adviser character.
+
+For a live stream, trigger advice on decision boundaries rather than on a blind
+fixed interval. A practical flow is: capture continuously for commentary, detect
+or manually mark when the move/switch menu is open, build the structured state,
+then ask the AI for one recommendation plus a short reason. If OCR is unreliable,
+use `/pokemon-control` as a small manual correction panel for the active Pokémon,
+HP, status, available moves, field state, and turn history. The panel saves text
+to `POST /api/pokemon/state`, and the stream manager appends that text to the
+AI context as "ポケモン参謀UI入力". The AI should explicitly say when the state is
+uncertain instead of pretending the screen capture contains hidden information.
+
+OCR should be treated as an assistive input, not the source of truth. It can work
+for stable labels such as move names, HP percentages, statuses, and menu phase
+when the capture region and language are fixed, but it will struggle with fast
+animations, overlays, small text, partial occlusion, and unknown opponent sets.
+Use OCR to prefill the control panel where possible, then let the streamer keep a
+small set of corrections current: legal moves/switches, field timers, revealed
+opponent moves/items/abilities, and the last turn summary. The adviser should
+prefer the manually saved UI state over raw OCR when they disagree.
+
 ## GCP troubleshooting
 
 ### Terraform fails with `invalid_grant`

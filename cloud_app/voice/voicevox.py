@@ -13,6 +13,7 @@ class VoicevoxOutput:
     def __init__(self, url, speaker_id):
         self.url = url
         self.speaker_id = speaker_id
+        self.current_speaker_id = speaker_id
         self.is_speaking = False
         self.current_speed = 1.0
         self.current_pitch = 0.0
@@ -24,7 +25,7 @@ class VoicevoxOutput:
 
         query_response = requests.post(
             f"{self.url}/audio_query",
-            params={"text": text, "speaker": self.speaker_id},
+            params={"text": text, "speaker": self.current_speaker_id},
             timeout=30,
         )
         query_response.raise_for_status()
@@ -35,7 +36,7 @@ class VoicevoxOutput:
 
         synth_response = requests.post(
             f"{self.url}/synthesis",
-            params={"speaker": self.speaker_id},
+            params={"speaker": self.current_speaker_id},
             data=json.dumps(query),
             timeout=60,
         )
