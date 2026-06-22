@@ -1,3 +1,4 @@
+import asyncio
 import time
 import types
 
@@ -93,6 +94,67 @@ def test_extract_gift_name_returns_none_when_missing(app_module):
     event = types.SimpleNamespace(gift=types.SimpleNamespace())
 
     assert LocalTikTokListener.extract_gift_name(event) is None
+
+
+def test_extract_diamond_count_uses_canonical_value(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        gift=types.SimpleNamespace(name="Rose", diamond_count=10)
+    )
+
+    assert LocalTikTokListener.extract_diamond_count(event) == 10
+
+
+def test_extract_diamond_count_falls_back_to_legacy_info(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        gift=types.SimpleNamespace(
+            name="Rose",
+            info=types.SimpleNamespace(diamond_count="25"),
+        )
+    )
+
+    assert LocalTikTokListener.extract_diamond_count(event) == 25
+
+
+def test_extract_diamond_count_ignores_missing_or_invalid_values(app_module):
+    from local_agent.tiktok.listener import LocalTikTokListener
+
+    event = types.SimpleNamespace(
+        gift=types.SimpleNamespace(diamond_count=0, info=types.SimpleNamespace())
+    )
+
+    assert LocalTikTokListener.extract_diamond_count(event) is None
+
+
+def test_gift_handler_enqueues_repeat_and_value_metrics(app_module):
+    listener = make_listener(app_module)
+    gift_handler = next(
+        handler
+        for event_type, handler in listener.client.handlers
+        if event_type.__name__ == "GiftEvent"
+    )
+    event = types.SimpleNamespace(
+        user=types.SimpleNamespace(nickname="alice"),
+        gift=types.SimpleNamespace(name="Rose", type=1, diamond_count=10),
+        repeat_count=5,
+        streaking=False,
+    )
+
+    asyncio.run(gift_handler(event))
+
+    assert listener.fetch_events() == [
+        {
+            "type": "gift",
+            "user": "alice",
+            "gift_name": "Rose",
+            "repeat_count": 5,
+            "diamond_count": 10,
+            "total_diamonds": 50,
+        }
+    ]
 
 
 def test_streaking_gift_event_is_in_progress(app_module):

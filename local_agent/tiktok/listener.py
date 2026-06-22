@@ -74,15 +74,40 @@ class LocalTikTokListener:
     def extract_repeat_count(event):
         value = getattr(event, "repeat_count", None)
         if value is not None:
-            return value
+            return LocalTikTokListener.normalize_positive_int(value, default=1)
 
         gift = getattr(event, "gift", None)
         if gift is not None:
             value = getattr(gift, "repeat_count", None)
             if value is not None:
-                return value
+                return LocalTikTokListener.normalize_positive_int(value, default=1)
 
         return 1
+
+    @staticmethod
+    def normalize_positive_int(value, default=None):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return default
+        return number if number > 0 else default
+
+    @classmethod
+    def extract_diamond_count(cls, event):
+        gift = getattr(event, "gift", None)
+        if gift is None:
+            return None
+
+        for source in (gift, getattr(gift, "info", None)):
+            if source is None:
+                continue
+            diamond_count = cls.normalize_positive_int(
+                getattr(source, "diamond_count", None)
+            )
+            if diamond_count is not None:
+                return diamond_count
+
+        return None
 
     @classmethod
     def is_streak_in_progress(cls, event):
@@ -134,12 +159,20 @@ class LocalTikTokListener:
                 )
                 return
 
+            repeat_count = self.extract_repeat_count(event)
+            diamond_count = self.extract_diamond_count(event)
             self.event_queue.put(
                 {
                     "type": "gift",
                     "user": event.user.nickname,
                     "gift_name": gift_name,
-                    "repeat_count": self.extract_repeat_count(event),
+                    "repeat_count": repeat_count,
+                    "diamond_count": diamond_count,
+                    "total_diamonds": (
+                        diamond_count * repeat_count
+                        if diamond_count is not None
+                        else None
+                    ),
                 }
             )
 

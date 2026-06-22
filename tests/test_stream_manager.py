@@ -133,13 +133,106 @@ def test_gift_logs_are_japanese(app_module):
 
     manager.handle_gift_event({"user": "viewer", "gift_name": "Unknown Gift"})
     assert app_module.dashboard_data["logs"][-1].endswith(
-        "ギフト受信: viewer さんから Unknown Gift"
+        "ギフト受信 [ライト]: viewer さんから Unknown Gift"
     )
 
     manager.handle_gift_event({"user": "viewer", "gift_name": "Rose"})
     assert app_module.dashboard_data["logs"][-1].endswith(
-        "ギフト予約: Rose (viewer さん)"
+        "ギフト予約 [ライト]: Rose (viewer さん)"
     )
+
+
+def test_gift_tiers_use_value_and_repeat_count_fallback(app_module):
+    manager, _voice = make_manager(app_module)
+
+    assert manager.classify_gift_tier(1, 1) == "light"
+    assert manager.classify_gift_tier(10, 1) == "middle"
+    assert manager.classify_gift_tier(100, 1) == "big"
+    assert manager.classify_gift_tier(1000, 1) == "legend"
+    assert manager.classify_gift_tier(None, 5) == "middle"
+    assert manager.classify_gift_tier(None, 20) == "big"
+    assert manager.classify_gift_tier(None, 100) == "legend"
+
+
+def test_unknown_gift_gets_thanks_plus_improv_context(app_module):
+    manager, _voice = make_manager(app_module)
+
+    manager.handle_gift_event(
+        {
+            "user": "alice",
+            "gift_name": "Cap",
+            "repeat_count": 3,
+            "diamond_count": 10,
+            "total_diamonds": 30,
+        }
+    )
+
+    assert "送り主: alice さん。ギフト: Cap。個数: 3。" in manager.pending_context
+    assert "段階: ミドル" in manager.pending_context
+    assert "お礼だけで終わらせない" in manager.pending_context
+    assert "普段より少し大きく反応" in manager.pending_context
+    assert "今回の追加演出" in manager.pending_context
+    assert "追加の課金やギフトを要求・催促する表現は禁止" in manager.pending_context
+    assert app_module.dashboard_data["logs"][-1].endswith(
+        "ギフト受信 [ミドル]: alice さんから Cap x3 / 30ダイヤ"
+    )
+
+
+def test_mapped_gift_keeps_personality_jack_and_adds_improv(app_module):
+    manager, _voice = make_manager(app_module)
+
+    manager.handle_gift_event(
+        {
+            "user": "alice",
+            "gift_name": "Rose",
+            "repeat_count": 5,
+            "diamond_count": 1,
+            "total_diamonds": 5,
+        }
+    )
+
+    assert manager.gift_queue == [("nechinechi", "alice", "Rose")]
+    assert "最優先: ギフトリアクション" in manager.pending_context
+    assert "固有演出" in manager.pending_context
+    assert "ネチネチOS" in manager.pending_context
+
+
+def test_gift_actions_rotate_within_each_tier(app_module):
+    from cloud_app.stream.manager import GIFT_ACTIONS
+
+    manager, _voice = make_manager(app_module)
+    contexts = []
+    for index in range(len(GIFT_ACTIONS["light"]) + 1):
+        context, *_rest = manager.build_gift_reaction_context(
+            {"user": f"viewer-{index}", "gift_name": "Cap"}
+        )
+        contexts.append(context)
+
+    for action, context in zip(GIFT_ACTIONS["light"], contexts):
+        assert action in context
+    assert GIFT_ACTIONS["light"][0] in contexts[-1]
+
+
+def test_gift_support_streak_is_included_and_expires(app_module, monkeypatch):
+    manager, _voice = make_manager(app_module)
+    now = [100.0]
+    monkeypatch.setattr(time, "time", lambda: now[0])
+
+    first, *_rest = manager.build_gift_reaction_context(
+        {"user": "alice", "gift_name": "Cap"}
+    )
+    now[0] += 10
+    second, *_rest = manager.build_gift_reaction_context(
+        {"user": "alice", "gift_name": "Cap"}
+    )
+    now[0] += manager.gift_support_streak_seconds
+    expired, *_rest = manager.build_gift_reaction_context(
+        {"user": "alice", "gift_name": "Cap"}
+    )
+
+    assert "60秒以内で" not in first
+    assert "60秒以内で2回目" in second
+    assert "60秒以内で" not in expired
 
 
 def test_gift_matching_accepts_case_and_japanese_aliases(app_module):
@@ -350,8 +443,10 @@ def test_build_system_prompt_asks_to_avoid_repeated_phrasing(app_module):
 
     assert "目安は25〜70文字" in prompt
     assert "単語だけ、相づちだけ、挨拶だけで終わらせず" in prompt
+    assert "レジェンドのギフト反応" in prompt
     assert "Recent logs と同じ文や同じ言い回しを繰り返さず" in prompt
     assert "通知文をそのまま読まず" in prompt
+    assert "追加の課金やギフトを要求・催促してはいけません" in prompt
     assert "入室が続く時も" in prompt
     assert "観察、感情、比喩、軽いツッコミ、期待、視聴者への呼びかけ" in prompt
     assert "画面に変化が少ない時" in prompt
