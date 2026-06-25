@@ -5,6 +5,36 @@ from flask import jsonify, render_template, render_template_string, request
 from cloud_app.dashboard.state import dashboard_data
 
 
+POKEMON_STATE_FIELDS = (
+    "phase",
+    "own_active",
+    "own_bench",
+    "available_actions",
+    "opponent",
+    "field",
+    "notes",
+)
+
+
+def sanitize_pokemon_battle_state(payload):
+    state = dashboard_data.get("pokemon_battle_state", {}).copy()
+    for field in POKEMON_STATE_FIELDS:
+        if field in payload:
+            state[field] = str(payload.get(field) or "").strip()
+
+    if "turn_history" in payload:
+        history = payload.get("turn_history")
+        if isinstance(history, str):
+            history = [line.strip() for line in history.splitlines() if line.strip()]
+        elif isinstance(history, list):
+            history = [str(item).strip() for item in history if str(item).strip()]
+        else:
+            history = []
+        state["turn_history"] = history[-6:]
+
+    return state
+
+
 def _get_stream_manager(get_stream_manager, create=True):
     try:
         return get_stream_manager(create=create)
@@ -74,6 +104,124 @@ def register_routes(app, get_stream_manager, frame_store=None):
             return jsonify({"status": "error", "message": "stream manager is unavailable"}), 500
 
         return jsonify(stream_manager.submit_events(events))
+
+    @app.route("/api/pokemon/state", methods=["GET", "POST"])
+    def pokemon_state():
+        if request.method == "GET":
+            return jsonify(dashboard_data["pokemon_battle_state"])
+
+        payload = request.get_json(silent=True) or {}
+        dashboard_data["pokemon_battle_state"] = sanitize_pokemon_battle_state(payload)
+        return jsonify({"status": "saved", "pokemon_battle_state": dashboard_data["pokemon_battle_state"]})
+
+    @app.route("/pokemon-control")
+    def pokemon_control():
+        return render_template_string(
+            """
+            <!doctype html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Pokémon Adviser Control</title>
+                <style>
+                    body { font-family: Segoe UI, sans-serif; margin: 0; padding: 16px; background: #f4f4f7; color: #1a1a1a; }
+                    .grid { display: grid; grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 12px; }
+                    label { display: block; font-weight: 700; margin-bottom: 4px; }
+                    textarea, input { width: 100%; box-sizing: border-box; border: 1px solid #ccc; border-radius: 8px; padding: 8px; font: 14px Consolas, monospace; }
+                    textarea { min-height: 76px; }
+                    button { margin-top: 12px; padding: 10px 16px; border: 0; border-radius: 8px; background: #ff0050; color: white; font-weight: 700; cursor: pointer; }
+                    #status { margin-left: 10px; color: #008f84; font-weight: 700; }
+                </style>
+            </head>
+            <body>
+                <h1>Pokémon Adviser Control</h1>
+                <div class="grid">
+                    <div><label>Phase</label><input id="phase" placeholder="move selection / forced switch"></div>
+                    <div><label>Available actions</label><textarea id="available_actions" placeholder="Move names, PP, legal switches"></textarea></div>
+                    <div><label>Own active</label><textarea id="own_active" placeholder="Species, HP%, status, boosts, item"></textarea></div>
+                    <div><label>Own bench</label><textarea id="own_bench" placeholder="Bench HP/status/switchable"></textarea></div>
+                    <div><label>Opponent visible state</label><textarea id="opponent" placeholder="Active, HP%, status, known moves/items"></textarea></div>
+                    <div><label>Field</label><textarea id="field" placeholder="Weather, terrain, hazards, screens, timers"></textarea></div>
+                    <div><label>Turn history</label><textarea id="turn_history" placeholder="One turn per line; newest lines are kept"></textarea></div>
+                    <div><label>Notes</label><textarea id="notes" placeholder="Uncertainty, reads, viewer poll"></textarea></div>
+                </div>
+                <button onclick="saveState()">Save battle state</button><span id="status"></span>
+                <script>
+                    const fields = ['phase','own_active','own_bench','available_actions','opponent','field','turn_history','notes'];
+                    async function loadState() {
+                        const res = await fetch('/api/pokemon/state', { cache: 'no-store' });
+                        const data = await res.json();
+                        for (const field of fields) {
+                            const value = field === 'turn_history' ? (data[field] || []).join('\n') : (data[field] || '');
+                            document.getElementById(field).value = value;
+                        }
+                    }
+                    async function saveState() {
+                        const payload = {};
+                        for (const field of fields) payload[field] = document.getElementById(field).value;
+                        const res = await fetch('/api/pokemon/state', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+                        document.getElementById('status').innerText = res.ok ? 'saved' : 'error';
+                    }
+                    loadState();
+                </script>
+            </body>
+            </html>
+            """
+        )
+
+    @app.route("/character-overlay")
+    def character_overlay():
+        stream_manager = _get_stream_manager(get_stream_manager, create=False)
+        if stream_manager and hasattr(stream_manager, "refresh_dashboard"):
+            stream_manager.refresh_dashboard()
+        return render_template_string(
+            """
+            <!doctype html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    html, body { margin: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; }
+                    #wrap { width: 100vw; height: 100vh; display: flex; align-items: end; justify-content: center; }
+                    #character { max-width: 100%; max-height: 100%; object-fit: contain; transition: opacity 180ms ease; }
+                    #fallback { display: none; padding: 16px 24px; border-radius: 18px; background: rgba(0,0,0,.55); color: white; font: 700 32px system-ui, sans-serif; }
+                </style>
+            </head>
+            <body>
+                <div id="wrap">
+                    <img id="character" alt="active character">
+                    <div id="fallback"></div>
+                </div>
+                <script>
+                    let activeImage = '';
+                    async function updateCharacter() {
+                        const res = await fetch('/api/status', { cache: 'no-store' });
+                        const data = await res.json();
+                        const image = data.character_image || '';
+                        const img = document.getElementById('character');
+                        const fallback = document.getElementById('fallback');
+                        if (image) {
+                            fallback.style.display = 'none';
+                            img.style.display = 'block';
+                            if (image !== activeImage) {
+                                activeImage = image;
+                                img.style.opacity = 0;
+                                img.onload = () => { img.style.opacity = 1; };
+                                img.src = image;
+                            }
+                        } else {
+                            img.style.display = 'none';
+                            fallback.style.display = 'block';
+                            fallback.innerText = data.active_character || data.active_mode || '';
+                        }
+                    }
+                    setInterval(updateCharacter, 500);
+                    updateCharacter();
+                </script>
+            </body>
+            </html>
+            """
+        )
 
     @app.route("/controller")
     def controller():

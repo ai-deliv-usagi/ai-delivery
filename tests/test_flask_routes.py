@@ -6,10 +6,24 @@ def test_status_returns_current_dashboard_data(app_module, client):
     app_module.dashboard_data.update(
         {
             "active_mode": "gal",
+            "active_mode_id": "gal",
+            "active_character": "春日部つむぎ",
+            "character_image": "/static/characters/tsumugi.png",
+            "voicevox_speaker_id": 8,
             "timer": 12,
             "queue": [("gal", "alice", "Finger Heart")],
             "logs": ["first", "second"],
             "is_online": True,
+            "pokemon_battle_state": {
+                "phase": "move selection",
+                "own_active": "Pikachu 80%",
+                "own_bench": "",
+                "available_actions": "Thunderbolt",
+                "opponent": "Charizard 60%",
+                "field": "sun",
+                "turn_history": ["T1: switch"],
+                "notes": "",
+            },
         }
     )
 
@@ -18,10 +32,24 @@ def test_status_returns_current_dashboard_data(app_module, client):
     assert response.status_code == 200
     assert response.get_json() == {
         "active_mode": "gal",
+        "active_mode_id": "gal",
+        "active_character": "春日部つむぎ",
+        "character_image": "/static/characters/tsumugi.png",
+        "voicevox_speaker_id": 8,
         "timer": 12,
         "queue": [["gal", "alice", "Finger Heart"]],
         "logs": ["first", "second"],
         "is_online": True,
+        "pokemon_battle_state": {
+            "phase": "move selection",
+            "own_active": "Pikachu 80%",
+            "own_bench": "",
+            "available_actions": "Thunderbolt",
+            "opponent": "Charizard 60%",
+            "field": "sun",
+            "turn_history": ["T1: switch"],
+            "notes": "",
+        },
     }
 
 
@@ -149,3 +177,52 @@ def test_receive_events_delegates_to_stream_manager(app_module, client):
     assert called == {
         "events": [{"type": "gift", "user": "alice", "gift_name": "Rose"}]
     }
+
+
+def test_character_overlay_renders_browser_source(app_module, client):
+    app_module.stream_manager = types.SimpleNamespace(refresh_dashboard=lambda: None)
+
+    response = client.get("/character-overlay")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "/api/status" in html
+    assert "character_image" in html
+    assert "active_character" in html
+
+
+def test_pokemon_state_api_saves_structured_text(app_module, client):
+    response = client.post(
+        "/api/pokemon/state",
+        json={
+            "phase": " move selection ",
+            "own_active": "Pikachu 80% paralyzed",
+            "available_actions": "Thunderbolt / Quick Attack",
+            "field": "Electric Terrain",
+            "turn_history": "T1: opponent switched\nT2: Pikachu used Thunderbolt",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "saved"
+    assert payload["pokemon_battle_state"]["phase"] == "move selection"
+    assert payload["pokemon_battle_state"]["turn_history"] == [
+        "T1: opponent switched",
+        "T2: Pikachu used Thunderbolt",
+    ]
+
+    response = client.get("/api/pokemon/state")
+
+    assert response.status_code == 200
+    assert response.get_json()["available_actions"] == "Thunderbolt / Quick Attack"
+
+
+def test_pokemon_control_renders_manual_state_panel(client):
+    response = client.get("/pokemon-control")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "/api/pokemon/state" in html
+    assert "turn_history" in html
+    assert "available_actions" in html
