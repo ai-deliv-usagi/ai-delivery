@@ -11,7 +11,6 @@ class AICommentator:
         )
         self.model_id = model_id
         self.history = []
-        self.chat = self.client.chats.create(model=self.model_id)
 
     def generate_comment(self, image_data, system_prompt="", extra_context=""):
         history_text = "\n".join([f"- {h}" for h in self.history[-5:]])
@@ -22,8 +21,9 @@ class AICommentator:
         )
 
         try:
-            response = self.chat.send_message(
-                [
+            response = self.client.models.generate_content(
+                model=self.model_id,
+                contents=[
                     types.Part.from_bytes(data=image_data, mime_type="image/jpg"),
                     full_prompt,
                 ],

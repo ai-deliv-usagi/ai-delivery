@@ -8,11 +8,7 @@ def test_ai_commentator_uses_vertex_ai_client(app_module, monkeypatch):
 
     def make_client(**kwargs):
         captured.update(kwargs)
-        return types.SimpleNamespace(
-            chats=types.SimpleNamespace(
-                create=lambda **_kwargs: types.SimpleNamespace()
-            )
-        )
+        return types.SimpleNamespace()
 
     monkeypatch.setattr(gemini_commentator.genai, "Client", make_client)
 
