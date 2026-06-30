@@ -9,7 +9,8 @@ param(
     [string]$TiktokUniqueId = "",
     [int]$VoicevoxSpeakerId = 63,
     [int]$VoicevoxMaxTextChars = 240,
-    [int]$SessionIdleTimeoutSeconds = 180
+    [int]$SessionIdleTimeoutSeconds = 180,
+    [int]$JackDurationSeconds = 120
 )
 
 $ErrorActionPreference = "Stop"
@@ -113,7 +114,8 @@ $terraformApplyArgs = @(
     "-var=vertex_ai_location=$VertexAiLocation",
     "-var=voicevox_speaker_id=$VoicevoxSpeakerId",
     "-var=voicevox_max_text_chars=$VoicevoxMaxTextChars",
-    "-var=session_idle_timeout_seconds=$SessionIdleTimeoutSeconds"
+    "-var=session_idle_timeout_seconds=$SessionIdleTimeoutSeconds",
+    "-var=jack_duration_seconds=$JackDurationSeconds"
 )
 
 Invoke-Checked `
@@ -149,7 +151,7 @@ Invoke-Checked `
         "--cpu=1",
         "--no-cpu-throttling",
         "--timeout=3600",
-        "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,GCP_PROJECT_ID=$ProjectId,VERTEX_AI_LOCATION=$VertexAiLocation,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,VOICEVOX_MAX_TEXT_CHARS=$VoicevoxMaxTextChars,AUDIO_BUCKET_NAME=$AudioBucketName,SESSION_IDLE_TIMEOUT_SECONDS=$SessionIdleTimeoutSeconds"
+        "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,GCP_PROJECT_ID=$ProjectId,VERTEX_AI_LOCATION=$VertexAiLocation,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,VOICEVOX_MAX_TEXT_CHARS=$VoicevoxMaxTextChars,AUDIO_BUCKET_NAME=$AudioBucketName,SESSION_IDLE_TIMEOUT_SECONDS=$SessionIdleTimeoutSeconds,JACK_DURATION_SECONDS=$JackDurationSeconds"
     )
 
 $appUrl = (gcloud run services describe $AppServiceName --project=$ProjectId --region=$Region --format="value(status.url)").Trim()

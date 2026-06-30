@@ -48,6 +48,7 @@ def create_stream_manager():
     voicevox_max_text_chars = int(os.getenv("VOICEVOX_MAX_TEXT_CHARS", "240"))
     audio_bucket_name = clean_env_value(os.getenv("AUDIO_BUCKET_NAME"))
     session_idle_timeout_seconds = int(os.getenv("SESSION_IDLE_TIMEOUT_SECONDS", "180"))
+    jack_duration_seconds = int(os.getenv("JACK_DURATION_SECONDS", "120"))
 
     ai = AICommentator(model_id, project_id, vertex_ai_location)
     voice = VoicevoxOutput(voicevox_url, voicevox_speaker_id, voicevox_max_text_chars)
@@ -62,6 +63,7 @@ def create_stream_manager():
         tiktok,
         state_store=state_store,
         session_idle_timeout_seconds=session_idle_timeout_seconds,
+        jack_duration_seconds=jack_duration_seconds,
     )
 
 

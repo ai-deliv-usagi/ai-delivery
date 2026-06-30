@@ -16,6 +16,7 @@ locals {
     VOICEVOX_URL                 = google_cloud_run_v2_service.voicevox.uri
     AUDIO_BUCKET_NAME            = google_storage_bucket.audio.name
     SESSION_IDLE_TIMEOUT_SECONDS = tostring(var.session_idle_timeout_seconds)
+    JACK_DURATION_SECONDS        = tostring(var.jack_duration_seconds)
   }
 }
 

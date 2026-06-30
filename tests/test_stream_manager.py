@@ -352,6 +352,7 @@ def test_mode_switch_logs_are_japanese(app_module):
 
 def test_trigger_manual_jack_sets_override_and_stops_current_voice(app_module):
     manager, voice = make_manager(app_module)
+    now = time.time()
 
     with app_module.app.app_context():
         response = manager.trigger_manual_jack("gal")
@@ -359,7 +360,7 @@ def test_trigger_manual_jack_sets_override_and_stops_current_voice(app_module):
     payload = response.get_json()
     assert payload == {"status": "success", "mode": manager.personality_library["gal"]["name"]}
     assert manager.override_mode_id == "gal"
-    assert manager.override_expiry > 0
+    assert now + manager.jack_duration_seconds <= manager.override_expiry <= time.time() + manager.jack_duration_seconds
     assert manager.current_gen_id > 0
     assert voice.is_speaking is False
     assert voice.stop_count == 1
@@ -530,6 +531,18 @@ def test_tick_events_advances_queued_mode_without_frame_or_status_request(app_mo
     assert app_module.dashboard_data["logs"][-1].endswith(
         ">>> 人格切替: 侍OS (viewer さん)"
     )
+
+
+def test_gift_mode_switch_uses_two_minute_jack_duration(app_module, monkeypatch):
+    manager, _voice = make_manager(app_module)
+    now = [100.0]
+    monkeypatch.setattr(time, "time", lambda: now[0])
+    manager.gift_queue.append(("gal", "viewer", "Finger Heart"))
+
+    manager.activate_next_gift_mode(now[0])
+
+    assert manager.override_mode_id == "gal"
+    assert manager.override_expiry == now[0] + 120
 
 
 def test_process_ai_task_speaks_generated_comment_and_resets_flag(app_module):

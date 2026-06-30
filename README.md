@@ -66,6 +66,8 @@ POST https://your-ai-delivery-app-url/api/session/stop
 `session_idle_timeout_seconds`. Generated speech text is capped by
 `VOICEVOX_MAX_TEXT_CHARS` before synthesis to avoid long join/comment batches
 creating oversized VOICEVOX work.
+Personality jack duration is controlled by `JACK_DURATION_SECONDS`; the default
+is 120 seconds.
 
 Useful checks:
 

@@ -61,6 +61,7 @@ class StreamManager:
         tiktok,
         state_store=None,
         session_idle_timeout_seconds=180,
+        jack_duration_seconds=120,
     ):
         self.capturer = capturer
         self.ai = ai
@@ -89,6 +90,7 @@ class StreamManager:
         self.event_loop_thread = None
         self.event_loop_interval = 0.25
         self.session_idle_timeout_seconds = session_idle_timeout_seconds
+        self.jack_duration_seconds = jack_duration_seconds
         self.last_activity_at = None
         self.restore_state()
 
@@ -176,7 +178,7 @@ class StreamManager:
                 self.voice.stop()
             self.voice.is_speaking = False
             self.override_mode_id = mode_id
-            self.override_expiry = now + 60
+            self.override_expiry = now + self.jack_duration_seconds
             mode_name = self.personality_library[mode_id]["name"]
             self.add_log(f"強制介入: {mode_name}")
             self.pending_context += (
@@ -570,7 +572,7 @@ class StreamManager:
     def activate_next_gift_mode(self, now):
         next_mode, gift_user, _gift_name = self.gift_queue.pop(0)
         self.override_mode_id = next_mode
-        self.override_expiry = now + 60
+        self.override_expiry = now + self.jack_duration_seconds
         mode_name = self.personality_library[next_mode]["name"]
         self.add_log(f">>> 人格切替: {mode_name} ({gift_user} さん)")
         self.pending_context += (

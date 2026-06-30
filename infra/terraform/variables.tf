@@ -80,6 +80,12 @@ variable "session_idle_timeout_seconds" {
   default     = 180
 }
 
+variable "jack_duration_seconds" {
+  description = "Seconds a personality jack stays active."
+  type        = number
+  default     = 120
+}
+
 variable "allow_unauthenticated" {
   description = "Whether to allow unauthenticated access to Cloud Run services."
   type        = bool
