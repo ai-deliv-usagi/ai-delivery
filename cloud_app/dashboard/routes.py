@@ -85,7 +85,7 @@ def register_routes(app, get_stream_manager, frame_store=None):
     @app.route("/")
     def index():
         return render_template_string(
-            """
+            r"""
             <!doctype html>
             <html>
             <head>
@@ -104,36 +104,33 @@ def register_routes(app, get_stream_manager, frame_store=None):
                         padding: 14px;
                     }
                     .panel {
-                        max-width: 380px;
+                        max-width: 720px;
                         display: flex;
                         flex-direction: column;
-                        gap: 10px;
+                        gap: 8px;
                     }
                     .card {
                         background: rgba(18, 18, 22, 0.72);
                         backdrop-filter: blur(10px);
                         -webkit-backdrop-filter: blur(10px);
                         border: 1px solid rgba(255, 255, 255, 0.1);
-                        padding: 14px 16px;
+                        padding: 10px 14px;
                         border-radius: 16px;
                         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
                     }
-                    .label {
-                        font-size: 0.75em;
-                        font-weight: 700;
-                        letter-spacing: 0.05em;
-                        color: rgba(255, 255, 255, 0.55);
-                        text-transform: uppercase;
-                        margin-bottom: 4px;
+                    .header {
+                        display: flex;
+                        align-items: center;
+                        gap: 14px;
+                        flex-wrap: wrap;
                     }
-                    .status-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
                     .status-pill {
                         display: inline-flex;
                         align-items: center;
                         gap: 6px;
                         font-weight: 800;
-                        font-size: 0.85em;
-                        padding: 5px 12px;
+                        font-size: 0.8em;
+                        padding: 4px 10px;
                         border-radius: 999px;
                     }
                     .status-pill.online { background: rgba(37, 244, 238, 0.18); color: var(--tt-cyan); }
@@ -141,72 +138,74 @@ def register_routes(app, get_stream_manager, frame_store=None):
                     .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
                     .status-dot.blink { animation: blink 1.4s ease-in-out infinite; }
                     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-                    .idle-note { font-size: 0.78em; color: rgba(255, 255, 255, 0.55); }
+                    .idle-note { margin-left: auto; font-size: 0.72em; color: rgba(255, 255, 255, 0.55); }
                     .idle-note.warn { color: var(--tt-pink); font-weight: 700; }
-                    .top-row { display: flex; gap: 10px; }
-                    .mode-card { flex: 2; cursor: pointer; }
                     .mode-name {
                         background: linear-gradient(90deg, var(--tt-cyan), var(--tt-pink));
                         -webkit-background-clip: text;
                         background-clip: text;
                         color: transparent;
-                        font-size: 1.5em;
+                        font-size: 1.2em;
                         font-weight: 800;
+                        cursor: pointer;
                     }
-                    .timer-card { flex: 1; }
-                    .timer { font-family: Consolas, monospace; font-size: 1.7em; font-weight: 800; color: #fff; }
-                    .queue { display: flex; flex-wrap: wrap; gap: 6px; }
-                    .queue-badge {
-                        background: linear-gradient(90deg, var(--tt-pink), #ff7a8a);
-                        color: #fff;
-                        padding: 4px 12px;
-                        border-radius: 999px;
-                        font-size: 0.85em;
-                        font-weight: 700;
-                    }
-                    .queue-empty { font-size: 0.85em; color: rgba(255, 255, 255, 0.45); }
+                    .timer { font-family: Consolas, monospace; font-size: 1.2em; font-weight: 800; color: #fff; }
                     .log-container {
-                        max-height: 150px;
+                        height: 270px;
                         overflow-y: auto;
                         display: flex;
                         flex-direction: column;
-                        gap: 4px;
-                        font-family: Consolas, monospace;
-                        font-size: 0.82em;
-                        color: rgba(255, 255, 255, 0.85);
+                        gap: 10px;
                     }
                     .log-container::-webkit-scrollbar { width: 4px; }
                     .log-container::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+                    .log-entry {
+                        padding-bottom: 10px;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                    }
+                    .log-entry:last-child { border-bottom: none; padding-bottom: 0; }
+                    .log-time {
+                        font-family: Consolas, monospace;
+                        font-size: 0.72em;
+                        font-weight: 700;
+                        color: var(--tt-cyan);
+                        margin-bottom: 3px;
+                    }
+                    .log-msg {
+                        font-size: 1em;
+                        line-height: 1.55;
+                        color: rgba(255, 255, 255, 0.88);
+                        word-break: break-word;
+                    }
+                    .log-entry.newest .log-msg {
+                        color: #fff;
+                        font-weight: 600;
+                    }
                 </style>
             </head>
             <body>
                 <div class="panel">
-                    <div class="card status-row">
+                    <div class="card header">
                         <span id="status-pill" class="status-pill offline">
                             <span id="status-dot" class="status-dot"></span>
                             <span id="status-text">OFFLINE</span>
                         </span>
+                        <span id="mode" class="mode-name" onclick="openController()">--</span>
+                        <span id="timer" class="timer">--</span>
                         <span id="idle-note" class="idle-note"></span>
-                    </div>
-                    <div class="top-row">
-                        <div class="card mode-card" onclick="openController()">
-                            <div class="label">モード</div>
-                            <div id="mode" class="mode-name">--</div>
-                        </div>
-                        <div class="card timer-card">
-                            <div class="label">残り時間</div>
-                            <div id="timer" class="timer">--</div>
-                        </div>
-                    </div>
-                    <div class="card">
-                        <div class="label">ギフト予約</div>
-                        <div id="queue" class="queue"></div>
                     </div>
                     <div class="card log-container" id="logs"></div>
                 </div>
                 <script>
                     const UPDATE_INTERVAL_MS = 1000;
                     const IDLE_WARN_SECONDS = 30;
+                    const LOG_LINE_RE = /^\[(\d{2}:\d{2}:\d{2})\]\s*([\s\S]*)$/;
+
+                    function escapeHtml(text) {
+                        const div = document.createElement('div');
+                        div.innerText = text;
+                        return div.innerHTML;
+                    }
 
                     async function update() {
                         try {
@@ -233,11 +232,17 @@ def register_routes(app, get_stream_manager, frame_store=None):
                                 idleNote.className = 'idle-note';
                             }
 
-                            document.getElementById('queue').innerHTML = data.queue.length
-                                ? data.queue.map(q => `<span class="queue-badge">${q[2]} (${q[1]})</span>`).join('')
-                                : '<span class="queue-empty">予約なし</span>';
                             document.getElementById('logs').innerHTML = data.logs.slice().reverse().slice(0, 4)
-                                .map(l => `<div>${l}</div>`).join('');
+                                .map((l, i) => {
+                                    const match = l.match(LOG_LINE_RE);
+                                    const time = match ? match[1] : '';
+                                    const msg = match ? match[2] : l;
+                                    const newestClass = i === 0 ? ' newest' : '';
+                                    return `<div class="log-entry${newestClass}">
+                                        <div class="log-time">${escapeHtml(time)}</div>
+                                        <div class="log-msg">${escapeHtml(msg)}</div>
+                                    </div>`;
+                                }).join('');
                         } catch (e) { console.error(e); }
                     }
                     function openController() {
