@@ -10,15 +10,23 @@ class VoicevoxOutput:
     audio through `last_audio`.
     """
 
-    def __init__(self, url, speaker_id):
+    def __init__(self, url, speaker_id, max_text_chars=240):
         self.url = url
         self.speaker_id = speaker_id
+        self.max_text_chars = max_text_chars
         self.is_speaking = False
         self.current_speed = 1.0
         self.current_pitch = 0.0
         self.last_audio = None
 
+    def prepare_text(self, text):
+        text = (text or "").strip()
+        if len(text) <= self.max_text_chars:
+            return text
+        return text[: self.max_text_chars].rstrip("、。,. ") + "。"
+
     def synthesize(self, text):
+        text = self.prepare_text(text)
         if not text:
             return None
 
@@ -54,4 +62,3 @@ class VoicevoxOutput:
 
     def stop(self):
         self.is_speaking = False
-

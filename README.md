@@ -53,6 +53,20 @@ python -m local_agent.main
 `/api/frames`, sends TikTok Live comments/gifts/follows to `/api/events`, plays
 returned VOICEVOX audio locally, and stops the session when the process exits.
 
+The cloud session also stops itself after `SESSION_IDLE_TIMEOUT_SECONDS` without
+frames or TikTok events. The default is 180 seconds. Status checks do not reset
+this idle timer, so an iPhone Shortcut can safely monitor:
+
+```text
+GET  https://your-ai-delivery-app-url/api/status
+POST https://your-ai-delivery-app-url/api/session/stop
+```
+
+`/api/status` includes `is_online`, `idle_seconds`, and
+`session_idle_timeout_seconds`. Generated speech text is capped by
+`VOICEVOX_MAX_TEXT_CHARS` before synthesis to avoid long join/comment batches
+creating oversized VOICEVOX work.
+
 Useful checks:
 
 ```powershell

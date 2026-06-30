@@ -68,6 +68,18 @@ variable "voicevox_speaker_id" {
   default     = 63
 }
 
+variable "voicevox_max_text_chars" {
+  description = "Maximum text length sent to VOICEVOX synthesis."
+  type        = number
+  default     = 240
+}
+
+variable "session_idle_timeout_seconds" {
+  description = "Seconds without frames or TikTok events before the app session stops itself."
+  type        = number
+  default     = 180
+}
+
 variable "allow_unauthenticated" {
   description = "Whether to allow unauthenticated access to Cloud Run services."
   type        = bool

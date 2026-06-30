@@ -10,6 +10,8 @@ dashboard_data = {
     "queue": [],
     "logs": [],
     "is_online": False,
+    "idle_seconds": None,
+    "session_idle_timeout_seconds": None,
 }
 
 

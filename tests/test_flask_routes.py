@@ -10,6 +10,8 @@ def test_status_returns_current_dashboard_data(app_module, client):
             "queue": [("gal", "alice", "Finger Heart")],
             "logs": ["first", "second"],
             "is_online": True,
+            "idle_seconds": 5,
+            "session_idle_timeout_seconds": 180,
         }
     )
 
@@ -22,6 +24,8 @@ def test_status_returns_current_dashboard_data(app_module, client):
         "queue": [["gal", "alice", "Finger Heart"]],
         "logs": ["first", "second"],
         "is_online": True,
+        "idle_seconds": 5,
+        "session_idle_timeout_seconds": 180,
     }
 
 

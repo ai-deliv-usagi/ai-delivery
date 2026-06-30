@@ -8,12 +8,14 @@ locals {
   ])
 
   app_env = {
-    GEMINI_MODEL_ID     = var.gemini_model_id
-    GCP_PROJECT_ID      = var.project_id
-    VERTEX_AI_LOCATION  = var.vertex_ai_location
-    VOICEVOX_SPEAKER_ID = tostring(var.voicevox_speaker_id)
-    VOICEVOX_URL        = google_cloud_run_v2_service.voicevox.uri
-    AUDIO_BUCKET_NAME   = google_storage_bucket.audio.name
+    GEMINI_MODEL_ID              = var.gemini_model_id
+    GCP_PROJECT_ID               = var.project_id
+    VERTEX_AI_LOCATION           = var.vertex_ai_location
+    VOICEVOX_SPEAKER_ID          = tostring(var.voicevox_speaker_id)
+    VOICEVOX_MAX_TEXT_CHARS      = tostring(var.voicevox_max_text_chars)
+    VOICEVOX_URL                 = google_cloud_run_v2_service.voicevox.uri
+    AUDIO_BUCKET_NAME            = google_storage_bucket.audio.name
+    SESSION_IDLE_TIMEOUT_SECONDS = tostring(var.session_idle_timeout_seconds)
   }
 }
 

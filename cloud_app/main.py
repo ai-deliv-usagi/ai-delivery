@@ -45,15 +45,24 @@ def create_stream_manager():
     vertex_ai_location = clean_env_value(os.getenv("VERTEX_AI_LOCATION", "global"))
     voicevox_url = clean_env_value(os.getenv("VOICEVOX_URL", "http://127.0.0.1:50021"))
     voicevox_speaker_id = int(os.getenv("VOICEVOX_SPEAKER_ID", "63"))
+    voicevox_max_text_chars = int(os.getenv("VOICEVOX_MAX_TEXT_CHARS", "240"))
     audio_bucket_name = clean_env_value(os.getenv("AUDIO_BUCKET_NAME"))
+    session_idle_timeout_seconds = int(os.getenv("SESSION_IDLE_TIMEOUT_SECONDS", "180"))
 
     ai = AICommentator(model_id, project_id, vertex_ai_location)
-    voice = VoicevoxOutput(voicevox_url, voicevox_speaker_id)
+    voice = VoicevoxOutput(voicevox_url, voicevox_speaker_id, voicevox_max_text_chars)
     tiktok = types.SimpleNamespace(current_patch_id="normal")
     state_store = NullStreamStateStore()
     if audio_bucket_name:
         state_store = SafeStreamStateStore(GcsStreamStateStore(audio_bucket_name))
-    return StreamManager(frame_store, ai, voice, tiktok, state_store=state_store)
+    return StreamManager(
+        frame_store,
+        ai,
+        voice,
+        tiktok,
+        state_store=state_store,
+        session_idle_timeout_seconds=session_idle_timeout_seconds,
+    )
 
 
 def main():

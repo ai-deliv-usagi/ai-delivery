@@ -105,6 +105,55 @@ def test_start_and_stop_session_are_persisted(app_module):
     assert store.saved[-1]["override_mode_id"] is None
 
 
+def test_session_auto_stops_after_idle_timeout(app_module, monkeypatch):
+    manager, _voice = make_manager(app_module)
+    manager.session_idle_timeout_seconds = 10
+    manager.start_tiktok_listener = lambda: None
+    manager.start_event_loop = lambda: None
+    now = [100.0]
+    monkeypatch.setattr(time, "time", lambda: now[0])
+
+    manager.start_session()
+    now[0] += 11
+    active_id = manager.tick_events()
+
+    assert active_id == "normal"
+    assert manager.session_active is False
+    assert app_module.dashboard_data["is_online"] is False
+    assert app_module.dashboard_data["idle_seconds"] is None
+    assert app_module.dashboard_data["session_idle_timeout_seconds"] == 10
+    assert app_module.dashboard_data["logs"][-1].endswith(
+        "Cloud Run idle timeout: no frames or TikTok events received; session stopped"
+    )
+
+
+def test_status_refresh_does_not_reset_idle_timer(app_module, monkeypatch):
+    manager, _voice = make_manager(app_module)
+    manager.session_idle_timeout_seconds = 30
+    manager.session_active = True
+    manager.last_activity_at = 100.0
+    now = [112.0]
+    monkeypatch.setattr(time, "time", lambda: now[0])
+
+    manager.refresh_dashboard()
+
+    assert manager.last_activity_at == 100.0
+    assert app_module.dashboard_data["idle_seconds"] == 12
+
+
+def test_frame_activity_resets_idle_timer(app_module, monkeypatch):
+    manager, _voice = make_manager(app_module)
+    manager.session_active = True
+    manager.last_activity_at = 100.0
+    now = [120.0]
+    monkeypatch.setattr(time, "time", lambda: now[0])
+
+    result = manager.process_frame(b"image")
+
+    assert result == {"status": "no_comment"}
+    assert manager.last_activity_at == 120.0
+
+
 def test_stream_state_is_restored_on_new_manager(app_module, monkeypatch):
     state = {
         "session_active": True,

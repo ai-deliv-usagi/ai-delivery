@@ -7,7 +7,9 @@ param(
     [string]$GeminiModelId = "gemini-2.5-flash-lite",
     [string]$VertexAiLocation = "global",
     [string]$TiktokUniqueId = "",
-    [int]$VoicevoxSpeakerId = 63
+    [int]$VoicevoxSpeakerId = 63,
+    [int]$VoicevoxMaxTextChars = 240,
+    [int]$SessionIdleTimeoutSeconds = 180
 )
 
 $ErrorActionPreference = "Stop"
@@ -109,7 +111,9 @@ $terraformApplyArgs = @(
     "-var=audio_bucket_name=$AudioBucketName",
     "-var=gemini_model_id=$GeminiModelId",
     "-var=vertex_ai_location=$VertexAiLocation",
-    "-var=voicevox_speaker_id=$VoicevoxSpeakerId"
+    "-var=voicevox_speaker_id=$VoicevoxSpeakerId",
+    "-var=voicevox_max_text_chars=$VoicevoxMaxTextChars",
+    "-var=session_idle_timeout_seconds=$SessionIdleTimeoutSeconds"
 )
 
 Invoke-Checked `
@@ -145,7 +149,7 @@ Invoke-Checked `
         "--cpu=1",
         "--no-cpu-throttling",
         "--timeout=3600",
-        "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,GCP_PROJECT_ID=$ProjectId,VERTEX_AI_LOCATION=$VertexAiLocation,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,AUDIO_BUCKET_NAME=$AudioBucketName"
+        "--set-env-vars=GEMINI_MODEL_ID=$GeminiModelId,GCP_PROJECT_ID=$ProjectId,VERTEX_AI_LOCATION=$VertexAiLocation,VOICEVOX_URL=$voicevoxUrl,VOICEVOX_SPEAKER_ID=$VoicevoxSpeakerId,VOICEVOX_MAX_TEXT_CHARS=$VoicevoxMaxTextChars,AUDIO_BUCKET_NAME=$AudioBucketName,SESSION_IDLE_TIMEOUT_SECONDS=$SessionIdleTimeoutSeconds"
     )
 
 $appUrl = (gcloud run services describe $AppServiceName --project=$ProjectId --region=$Region --format="value(status.url)").Trim()

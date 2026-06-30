@@ -80,6 +80,7 @@ def _install_stub_modules(monkeypatch):
         "CommentEvent",
         "ConnectEvent",
         "JoinEvent",
+        "LeaveEvent",
         "GiftEvent",
         "FollowEvent",
         "PollEvent",
@@ -112,6 +113,8 @@ def app_module(monkeypatch):
             "queue": [],
             "logs": [],
             "is_online": False,
+            "idle_seconds": None,
+            "session_idle_timeout_seconds": None,
         }
     )
     module.stream_manager = None

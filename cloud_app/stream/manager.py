@@ -53,7 +53,15 @@ GIFT_ACTIONS = {
 
 
 class StreamManager:
-    def __init__(self, capturer, ai, voice, tiktok, state_store=None):
+    def __init__(
+        self,
+        capturer,
+        ai,
+        voice,
+        tiktok,
+        state_store=None,
+        session_idle_timeout_seconds=180,
+    ):
         self.capturer = capturer
         self.ai = ai
         self.voice = voice
@@ -80,6 +88,8 @@ class StreamManager:
         self.tiktok_thread = None
         self.event_loop_thread = None
         self.event_loop_interval = 0.25
+        self.session_idle_timeout_seconds = session_idle_timeout_seconds
+        self.last_activity_at = None
         self.restore_state()
 
     @staticmethod
@@ -97,6 +107,7 @@ class StreamManager:
             "gift_queue": self.gift_queue,
             "pending_context": self.pending_context,
             "current_gen_id": self.current_gen_id,
+            "last_activity_at": self.last_activity_at,
         }
 
     def restore_state(self):
@@ -113,6 +124,7 @@ class StreamManager:
         self.gift_queue = [tuple(item) for item in state.get("gift_queue", [])]
         self.pending_context = state.get("pending_context", "")
         self.current_gen_id = state.get("current_gen_id", 0)
+        self.last_activity_at = state.get("last_activity_at")
         dashboard_data["is_online"] = self.session_active
         now = time.time()
         self.update_dashboard(self.get_active_mode_id(now), now)
@@ -131,6 +143,30 @@ class StreamManager:
         if force or self._state_dirty:
             self.state_store.save(self.snapshot_state())
             self._state_dirty = False
+
+    def mark_activity(self, now=None):
+        self.last_activity_at = now or time.time()
+        self.mark_state_dirty()
+
+    def get_idle_seconds(self, now=None):
+        if not self.session_active or self.last_activity_at is None:
+            return None
+        return max(0, int((now or time.time()) - self.last_activity_at))
+
+    def stop_if_idle(self, now=None):
+        if not self.session_active:
+            return False
+
+        now = now or time.time()
+        if self.last_activity_at is None:
+            self.mark_activity(now)
+            return False
+
+        if now - self.last_activity_at < self.session_idle_timeout_seconds:
+            return False
+
+        self.stop_session(reason="idle_timeout")
+        return True
 
     def trigger_manual_jack(self, mode_id):
         if mode_id in self.personality_library:
@@ -157,6 +193,7 @@ class StreamManager:
             return {"status": "already_started"}
 
         self.session_active = True
+        self.mark_activity()
         self.add_log("配信セッション開始")
         self.start_tiktok_listener()
         self.start_event_loop()
@@ -165,7 +202,7 @@ class StreamManager:
         self.save_state()
         return {"status": "started"}
 
-    def stop_session(self):
+    def stop_session(self, reason=None):
         self.session_active = False
         self.override_mode_id = None
         self.override_expiry = 0
@@ -175,7 +212,10 @@ class StreamManager:
         self.recent_gift_events = {}
         self.gift_action_indexes = {tier: 0 for tier in GIFT_ACTIONS}
         self.gift_support_streaks = {}
+        self.last_activity_at = None
         self.add_log("配信セッション停止")
+        if reason == "idle_timeout":
+            self.add_log("Cloud Run idle timeout: no frames or TikTok events received; session stopped")
         dashboard_data["is_online"] = False
         self.update_dashboard(self.get_active_mode_id(time.time()), time.time())
         self.mark_state_dirty()
@@ -245,6 +285,8 @@ class StreamManager:
 
         now = time.time()
         self.process_pending_events()
+        if self.stop_if_idle(now):
+            return None
         self.update_mode(now)
 
         active_id = self.get_active_mode_id(now)
@@ -259,6 +301,11 @@ class StreamManager:
         now = time.time()
         if self.session_active:
             self.process_pending_events()
+            if self.stop_if_idle(now):
+                active_id = self.get_active_mode_id(now)
+                self.update_dashboard(active_id, now)
+                self.save_state()
+                return active_id
         self.update_mode(now)
         active_id = self.get_active_mode_id(now)
         self.update_dashboard(active_id, now)
@@ -285,6 +332,8 @@ class StreamManager:
             self.event_queue.put(event)
             accepted += 1
 
+        if accepted:
+            self.mark_activity()
         active_id = self.tick_events()
         return {"status": "accepted", "accepted": accepted}
 
@@ -292,6 +341,7 @@ class StreamManager:
         if not self.session_active:
             return {"status": "inactive"}
 
+        self.mark_activity()
         active_id = self.tick_events()
 
         if self.voice.is_speaking or self.is_generating:
@@ -545,6 +595,8 @@ class StreamManager:
         dashboard_data["active_mode"] = config["name"]
         dashboard_data["timer"] = int(max(0, self.override_expiry - now))
         dashboard_data["queue"] = self.gift_queue
+        dashboard_data["idle_seconds"] = self.get_idle_seconds(now)
+        dashboard_data["session_idle_timeout_seconds"] = self.session_idle_timeout_seconds
 
     def start_generation_if_ready(self, active_id):
         if self.voice.is_speaking or self.is_generating:

@@ -48,10 +48,10 @@ def test_fetch_events_groups_three_or_more_joined_users(app_module):
     assert listener.join_buffer == []
 
 
-def test_fetch_events_groups_stale_join_buffer(app_module):
+def test_fetch_events_groups_stale_small_join_buffer(app_module):
     listener = make_listener(app_module)
     listener.join_buffer = ["alice"]
-    listener.last_join_time = time.time() - 11
+    listener.join_seen_at = {"alice": time.time() - listener.join_flush_after_seconds}
 
     events = listener.fetch_events()
 
@@ -62,12 +62,45 @@ def test_fetch_events_groups_stale_join_buffer(app_module):
 def test_fetch_events_keeps_recent_small_join_buffer(app_module):
     listener = make_listener(app_module)
     listener.join_buffer = ["alice", "bob"]
-    listener.last_join_time = time.time()
+    listener.join_seen_at = {"alice": time.time(), "bob": time.time()}
 
     events = listener.fetch_events()
 
     assert events == []
     assert listener.join_buffer == ["alice", "bob"]
+
+
+def test_fetch_events_limits_join_names_to_four(app_module):
+    listener = make_listener(app_module)
+    listener.join_buffer = ["alice", "bob", "carol", "dave", "erin"]
+    listener.join_seen_at = {user: time.time() for user in listener.join_buffer}
+
+    events = listener.fetch_events()
+
+    assert events == [
+        {"type": "join_bulk", "users": "alice, bob, carol, dave", "count": 4}
+    ]
+    assert listener.join_buffer == ["erin"]
+
+
+def test_leave_event_removes_user_from_join_buffer(app_module):
+    listener = make_listener(app_module)
+    join_handler = next(
+        handler
+        for event_type, handler in listener.client.handlers
+        if event_type.__name__ == "JoinEvent"
+    )
+    leave_handler = next(
+        handler
+        for event_type, handler in listener.client.handlers
+        if event_type.__name__ == "LeaveEvent"
+    )
+
+    asyncio.run(join_handler(types.SimpleNamespace(user=types.SimpleNamespace(nickname="alice"))))
+    asyncio.run(leave_handler(types.SimpleNamespace(user=types.SimpleNamespace(nickname="alice"))))
+
+    assert listener.join_buffer == []
+    assert listener.join_seen_at == {}
 
 
 def test_extract_gift_name_uses_canonical_gift_name(app_module):
