@@ -83,6 +83,7 @@ class StreamManager:
         self.override_expiry = 0
         self.gift_queue = []
         self.pending_context = ""
+        self.latest_viewer_context = ""
         self.current_gen_id = 0
         self.is_generating = False
         self.session_active = False
@@ -108,6 +109,7 @@ class StreamManager:
             "override_expiry": self.override_expiry,
             "gift_queue": self.gift_queue,
             "pending_context": self.pending_context,
+            "latest_viewer_context": self.latest_viewer_context,
             "current_gen_id": self.current_gen_id,
             "last_activity_at": self.last_activity_at,
         }
@@ -125,6 +127,7 @@ class StreamManager:
         self.override_expiry = float(state.get("override_expiry") or 0)
         self.gift_queue = [tuple(item) for item in state.get("gift_queue", [])]
         self.pending_context = state.get("pending_context", "")
+        self.latest_viewer_context = state.get("latest_viewer_context", "")
         self.current_gen_id = state.get("current_gen_id", 0)
         self.last_activity_at = state.get("last_activity_at")
         dashboard_data["is_online"] = self.session_active
@@ -210,6 +213,7 @@ class StreamManager:
         self.override_expiry = 0
         self.gift_queue = []
         self.pending_context = ""
+        self.latest_viewer_context = ""
         self.current_gen_id = 0
         self.recent_gift_events = {}
         self.gift_action_indexes = {tier: 0 for tier in GIFT_ACTIONS}
@@ -339,19 +343,20 @@ class StreamManager:
         active_id = self.tick_events()
         return {"status": "accepted", "accepted": accepted}
 
-    def process_frame(self, frame):
+    def process_frame(self, frame, playback_busy=False):
         if not self.session_active:
             return {"status": "inactive"}
 
         self.mark_activity()
         active_id = self.tick_events()
 
-        if self.voice.is_speaking or self.is_generating:
+        if playback_busy or self.voice.is_speaking or self.is_generating:
             return {"status": "busy"}
 
         sys_prompt = self.build_system_prompt(active_id)
-        current_context = self.pending_context
+        current_context = self.build_generation_context()
         self.pending_context = ""
+        self.latest_viewer_context = ""
         self.mark_state_dirty()
         self.save_state()
         self.is_generating = True
@@ -379,7 +384,7 @@ class StreamManager:
         for event in events:
             event_type = event["type"]
             if event_type == "comment":
-                self.pending_context += (
+                self.set_latest_viewer_context(
                     f"\n# 視聴者コメント: {event['user']} さん「{event['text']}」。"
                     "必要なら短く反応してください。"
                     "コメントが外国語なら、短い挨拶・感謝・リアクションは相手と同じ言語で返してよいです。"
@@ -398,7 +403,7 @@ class StreamManager:
                 }.get(event.get("status"), "状態更新")
                 self.add_log(f"TikTokLive [{label}] {event['message']}")
             elif event_type == "join_bulk":
-                self.pending_context += (
+                self.set_latest_viewer_context(
                     f"\n# 入室通知: {event['count']}人が入室しました。名前: {event['users']}。"
                     "歓迎はしてください。ただし「みなさんいらっしゃい」などの定型句だけにせず、"
                     "人格に合わせて、名前を拾う・画面の状況に絡める・軽くツッコむなど、"
@@ -406,10 +411,17 @@ class StreamManager:
                 )
                 self.mark_state_dirty()
             elif event_type == "follow":
-                self.pending_context += (
+                self.set_latest_viewer_context(
                     f"\n# フォロー通知: {event['user']} さんがフォローしました。日本語で感謝してください。"
                 )
                 self.mark_state_dirty()
+
+    def set_latest_viewer_context(self, context):
+        self.latest_viewer_context = context
+        self.mark_state_dirty()
+
+    def build_generation_context(self):
+        return f"{self.pending_context}{self.latest_viewer_context}"
 
     @staticmethod
     def positive_int(value, default=None):
@@ -611,8 +623,9 @@ class StreamManager:
             return
 
         sys_prompt = self.build_system_prompt(active_id)
-        current_context = self.pending_context
+        current_context = self.build_generation_context()
         self.pending_context = ""
+        self.latest_viewer_context = ""
         self.mark_state_dirty()
         self.save_state()
         self.is_generating = True

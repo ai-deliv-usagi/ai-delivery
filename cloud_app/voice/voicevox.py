@@ -10,7 +10,7 @@ class VoicevoxOutput:
     audio through `last_audio`.
     """
 
-    def __init__(self, url, speaker_id, max_text_chars=240):
+    def __init__(self, url, speaker_id, max_text_chars=200):
         self.url = url
         self.speaker_id = speaker_id
         self.max_text_chars = max_text_chars

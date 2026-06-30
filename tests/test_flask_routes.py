@@ -102,13 +102,19 @@ def test_session_stop_delegates_to_stream_manager(app_module, client):
 
 
 def test_receive_frame_returns_audio_base64_when_generated(app_module, client):
-    app_module.stream_manager = types.SimpleNamespace(
-        process_frame=lambda frame: {
+    called = {}
+
+    def process_frame(frame, playback_busy=False):
+        called["playback_busy"] = playback_busy
+        return {
             "status": "ok",
             "comment": "hello",
             "audio": b"wav-bytes",
             "audio_content_type": "audio/wav",
         }
+
+    app_module.stream_manager = types.SimpleNamespace(
+        process_frame=process_frame
     )
 
     response = client.post(
@@ -125,6 +131,30 @@ def test_receive_frame_returns_audio_base64_when_generated(app_module, client):
         "audio_content_type": "audio/wav",
         "audio_encoding": "base64",
     }
+    assert called == {"playback_busy": False}
+
+
+def test_receive_frame_passes_playback_busy(app_module, client):
+    called = {}
+
+    def process_frame(frame, playback_busy=False):
+        called["playback_busy"] = playback_busy
+        return {"status": "busy"}
+
+    app_module.stream_manager = types.SimpleNamespace(process_frame=process_frame)
+
+    response = client.post(
+        "/api/frames",
+        data={
+            "playback_busy": "1",
+            "frame": (io.BytesIO(b"frame"), "frame.jpg"),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "busy"}
+    assert called == {"playback_busy": True}
 
 
 def test_receive_events_requires_event_list(client):

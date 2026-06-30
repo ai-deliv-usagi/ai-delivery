@@ -1,15 +1,23 @@
 # ai-delivery
 
-## GCP deployment
+Minecraft 配信向けの AI 実況システムです。
 
-The cloud side is intended to run on Cloud Run:
+Cloud Run 側で Gemini による実況生成と VOICEVOX 音声合成を行い、ローカル PC 側の `local_agent` が Minecraft 画面キャプチャ、TikTok Live イベント受信、音声再生を担当します。
 
-- `ai-delivery-app`: Flask dashboard, Gemini commentary, local event API, frame API
+## 構成
+
+Cloud 側は Cloud Run で動かします。
+
+- `ai-delivery-app`: Flask ダッシュボード、Gemini 実況生成、イベント API、フレーム API
 - `ai-delivery-voicevox`: VOICEVOX Engine
-- Cloud Storage bucket: generated audio files
-- Vertex AI Gemini via the Cloud Run service account
+- Cloud Storage bucket: セッション状態などの保存先
+- Vertex AI Gemini: Cloud Run のサービスアカウント認証で利用
 
-Terraform lives in `infra/terraform`.
+TikTok Live の接続、Minecraft 画面キャプチャ、音声再生は Cloud Run ではなくローカル PC で実行します。Cloud Run は長時間 WebSocket 接続やローカル音声再生を持たない前提です。
+
+## GCP デプロイ
+
+Terraform は `infra/terraform` にあります。通常は repo ルートで次を実行します。
 
 ```powershell
 .\scripts\deploy-gcp.ps1 `
@@ -17,24 +25,30 @@ Terraform lives in `infra/terraform`.
   -Region "asia-northeast1"
 ```
 
-The deploy script applies Terraform first, then deploys the app to Cloud Run
-from local source using Cloud Build. Gemini uses Vertex AI authentication through
-the Cloud Run service account, so no Gemini API key or Secret Manager value is
-needed.
+このスクリプトは、必要な GCP API を有効化し、Terraform を適用してから、ローカルソースを Cloud Build 経由で Cloud Run にデプロイします。
 
-## Streaming flow
+Gemini は Vertex AI のサービスアカウント認証を使うため、Gemini API key や Secret Manager の値は不要です。
 
-The Cloud Run app is request-driven. It does not start the stream loop when the
-container boots. During an active session, it runs a lightweight background
-event loop so gift queues, jack expiry, and dashboard timers can advance without
-waiting for `/api/frames` or `/api/status`.
+主な調整パラメータ:
 
-Session state is persisted to Cloud Storage under `state/stream-session.json`.
-If the Cloud Run app instance is restarted during a stream, the next request can
-restore the active session flag, current jack mode, jack expiry, queued gifts,
-and pending viewer context.
+```powershell
+.\scripts\deploy-gcp.ps1 `
+  -ProjectId "gen-lang-client-0496284195" `
+  -Region "asia-northeast1" `
+  -VoicevoxMaxTextChars 200 `
+  -SessionIdleTimeoutSeconds 180 `
+  -JackDurationSeconds 120
+```
 
-Create a local virtual environment for `local_agent`:
+`VOICEVOX_MAX_TEXT_CHARS` は VOICEVOX に送る最大文字数です。デフォルトは 200 文字です。
+
+`SESSION_IDLE_TIMEOUT_SECONDS` は、フレームや TikTok イベントが来なくなったあと Cloud 側セッションを自動停止するまでの秒数です。デフォルトは 180 秒です。
+
+`JACK_DURATION_SECONDS` は人格ジャックが継続する秒数です。デフォルトは 120 秒です。
+
+## ローカル agent の起動
+
+初回はローカル環境を作ります。
 
 ```powershell
 python -m venv .venv
@@ -43,57 +57,89 @@ python -m pip install --upgrade pip
 pip install -r requirements-local.txt
 ```
 
+Cloud Run の URL と TikTok ID を設定して起動します。
+
 ```powershell
 $env:CLOUD_APP_URL = "https://your-ai-delivery-app-url"
 $env:TIKTOK_UNIQUE_ID = "@your_tiktok_id"
 python -m local_agent.main
 ```
 
-`local_agent` starts a session, sends captured Minecraft frames to
-`/api/frames`, sends TikTok Live comments/gifts/follows to `/api/events`, plays
-returned VOICEVOX audio locally, and stops the session when the process exits.
+`local_agent` は起動時に Cloud 側セッションを開始し、終了時に停止します。
 
-The cloud session also stops itself after `SESSION_IDLE_TIMEOUT_SECONDS` without
-frames or TikTok events. The default is 180 seconds. Status checks do not reset
-this idle timer, so an iPhone Shortcut can safely monitor:
+実行中は次を行います。
+
+- Minecraft の画面をキャプチャして `/api/frames` に送信
+- TikTok Live のコメント、ギフト、フォロー、入室イベントを `/api/events` に送信
+- Cloud 側から返ってきた VOICEVOX 音声をローカル PC で再生
+
+音声再生は非同期です。再生中でもフレーム送信と TikTok イベント送信は続きます。再生中のフレームには `playback_busy=1` が付き、Cloud 側はコメント生成を一時的に抑えつつ、最新の視聴者イベントだけを次の生成へ混ぜます。
+
+## セッションと監視
+
+Cloud Run app はリクエスト駆動です。コンテナ起動時に自動で配信ループを開始しません。
+
+配信セッション中だけ軽いバックグラウンドループを動かし、ギフトキュー、人格ジャックの残り時間、ダッシュボード状態を更新します。
+
+セッション状態は Cloud Storage の `state/stream-session.json` に保存されます。Cloud Run インスタンスが再起動しても、次のリクエストでセッション中フラグ、人格ジャック状態、残り時間、ギフトキュー、未処理コンテキストを復元できます。
+
+状態確認:
+
+```powershell
+$env:CLOUD_APP_URL = "https://your-ai-delivery-app-url"
+
+curl "$env:CLOUD_APP_URL/api/status"
+curl -X POST "$env:CLOUD_APP_URL/api/session/start"
+curl -X POST "$env:CLOUD_APP_URL/api/session/stop"
+```
+
+`/api/status` には `is_online`、`idle_seconds`、`session_idle_timeout_seconds` が含まれます。
+
+iPhone ショートカットなどから監視する場合も、`GET /api/status` は idle timer をリセットしません。
 
 ```text
 GET  https://your-ai-delivery-app-url/api/status
 POST https://your-ai-delivery-app-url/api/session/stop
 ```
 
-`/api/status` includes `is_online`, `idle_seconds`, and
-`session_idle_timeout_seconds`. Generated speech text is capped by
-`VOICEVOX_MAX_TEXT_CHARS` before synthesis to avoid long join/comment batches
-creating oversized VOICEVOX work.
-Personality jack duration is controlled by `JACK_DURATION_SECONDS`; the default
-is 120 seconds.
+## Cloud Run の起動コスト方針
 
-Useful checks:
+`min_instance_count=1` にすると、使っていない時間も Cloud Run インスタンスを常に温めます。
+
+このプロジェクトの利用頻度が「4〜5日に1回、1時間程度」なら、VOICEVOX を常時起動する費用対効果は低いです。基本方針は `min_instance_count=0` のままにして、配信開始直後の初回だけコールドスタートを許容します。
+
+初回遅延が気になる場合は、配信直前に短いテスト発話を流して VOICEVOX を起こす運用が現実的です。
+
+## VOICEVOX 音声
+
+VOICEVOX は Cloud Run の別サービスとして動きます。
+
+app サービスは `VOICEVOX_URL/audio_query` と `VOICEVOX_URL/synthesis` を呼び、生成された WAV を `/api/frames` のレスポンスで base64 として返します。
+
+音声再生はローカル PC の `local_agent` が担当します。
+
+## TikTok 設定
+
+`TIKTOK_UNIQUE_ID` は Secret Manager や Cloud Run には置きません。ローカル環境変数またはローカル `.env` に設定します。
 
 ```powershell
-curl -X POST "$env:CLOUD_APP_URL/api/session/start"
-curl "$env:CLOUD_APP_URL/api/status"
-curl -X POST "$env:CLOUD_APP_URL/api/session/stop"
+$env:TIKTOK_UNIQUE_ID = "@your_tiktok_id"
+python -m local_agent.main
 ```
 
-VOICEVOX runs as a separate Cloud Run service. The app service calls
-`VOICEVOX_URL/audio_query` and `VOICEVOX_URL/synthesis`, returns the generated
-WAV bytes as base64 in the `/api/frames` response, and the local agent plays the
-audio on the local PC.
+## トラブルシュート
 
-## GCP troubleshooting
+### Terraform が `invalid_grant` で失敗する
 
-### Terraform fails with `invalid_grant`
+`gcloud auth login` と Terraform の Application Default Credentials は別です。
 
-`gcloud auth login` and Terraform's Application Default Credentials are separate.
-If Terraform shows an OAuth error such as:
+次のような OAuth エラーが出た場合:
 
 ```text
 oauth2: "invalid_grant" "Token has been expired or revoked."
 ```
 
-refresh ADC:
+ADC を更新します。
 
 ```powershell
 gcloud auth application-default login
@@ -101,16 +147,16 @@ gcloud auth application-default set-quota-project gen-lang-client-0496284195
 gcloud auth application-default print-access-token
 ```
 
-Then retry:
+その後、再実行します。
 
 ```powershell
 .\.tools\terraform\terraform.exe -chdir=infra\terraform plan
 .\scripts\deploy-gcp.ps1 -ProjectId "gen-lang-client-0496284195"
 ```
 
-### API enablement errors
+### GCP API 有効化で失敗する
 
-The deploy script enables required APIs before Terraform runs:
+デプロイスクリプトは Terraform 実行前に次の API を有効化します。
 
 ```text
 artifactregistry.googleapis.com
@@ -120,25 +166,19 @@ run.googleapis.com
 storage.googleapis.com
 ```
 
-If `PERMISSION_DENIED` appears while enabling an API, the active account likely
-needs Service Usage permissions. Enable the API manually in the console or grant
-the account a role such as `Service Usage Admin`.
+`PERMISSION_DENIED` が出る場合、現在の GCP アカウントに Service Usage 権限が足りない可能性があります。コンソールで手動有効化するか、`Service Usage Admin` 相当の権限を付与してください。
 
-`TIKTOK_UNIQUE_ID` is not stored in Secret Manager and is not deployed to Cloud
-Run. Set it in the local environment or local `.env` before running
-`python -m local_agent.main`.
+### PowerShell と Terraform の `-chdir`
 
-### PowerShell and Terraform `-chdir`
+PowerShell では Terraform の `-chdir` 引数の渡し方に注意してください。
 
-Pass Terraform arguments carefully in PowerShell. The deploy script resolves the
-Terraform directory and passes `-chdir` as an expanded argument. If you run
-Terraform manually, this form is safe:
+デプロイスクリプトは Terraform ディレクトリを解決してから `-chdir` に渡します。手動実行する場合は次の形が安全です。
 
 ```powershell
 .\.tools\terraform\terraform.exe -chdir=infra\terraform plan
 ```
 
-An error like this means the path was passed literally instead of expanded:
+次のようなエラーは、パスが展開されずに文字列のまま渡された時に起きます。
 
 ```text
 Error handling -chdir option: chdir $terraformDir: The system cannot find the file specified.

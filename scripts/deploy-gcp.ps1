@@ -8,7 +8,7 @@ param(
     [string]$VertexAiLocation = "global",
     [string]$TiktokUniqueId = "",
     [int]$VoicevoxSpeakerId = 63,
-    [int]$VoicevoxMaxTextChars = 240,
+    [int]$VoicevoxMaxTextChars = 200,
     [int]$SessionIdleTimeoutSeconds = 180,
     [int]$JackDurationSeconds = 120
 )

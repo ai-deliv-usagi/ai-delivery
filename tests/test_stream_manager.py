@@ -335,6 +335,48 @@ def test_process_frame_drains_gift_events_even_when_busy(app_module):
     assert manager.gift_queue == [("nechinechi", "viewer", "Rose")]
 
 
+def test_process_frame_keeps_latest_viewer_event_when_playback_is_busy(app_module):
+    manager, _voice = make_manager(app_module)
+    manager.session_active = True
+
+    manager.submit_events(
+        [
+            {"type": "comment", "user": "alice", "text": "first"},
+            {"type": "comment", "user": "bob", "text": "latest"},
+        ]
+    )
+    result = manager.process_frame(b"image", playback_busy=True)
+
+    assert result == {"status": "busy"}
+    assert "alice さん「first」" not in manager.latest_viewer_context
+    assert "bob さん「latest」" in manager.latest_viewer_context
+
+
+def test_next_generation_uses_latest_viewer_event_after_busy(app_module):
+    manager, _voice = make_manager(app_module)
+    manager.session_active = True
+    calls = {}
+
+    def generate_comment(frame, system_prompt, extra_context):
+        calls["extra_context"] = extra_context
+        return "reply"
+
+    manager.ai = types.SimpleNamespace(generate_comment=generate_comment)
+    manager.submit_events(
+        [
+            {"type": "comment", "user": "alice", "text": "first"},
+            {"type": "comment", "user": "bob", "text": "latest"},
+        ]
+    )
+
+    result = manager.process_frame(b"image")
+
+    assert result["status"] == "ok"
+    assert "alice さん「first」" not in calls["extra_context"]
+    assert "bob さん「latest」" in calls["extra_context"]
+    assert manager.latest_viewer_context == ""
+
+
 def test_mode_switch_logs_are_japanese(app_module):
     manager, _voice = make_manager(app_module)
     manager.gift_queue.append(("gal", "viewer", "Finger Heart"))
@@ -482,10 +524,10 @@ def test_comment_context_allows_short_same_language_replies(app_module):
         [{"type": "comment", "user": "alice", "text": "hello from Brazil!"}]
     )
 
-    assert "視聴者コメント: alice さん「hello from Brazil!」" in manager.pending_context
-    assert "外国語なら" in manager.pending_context
-    assert "相手と同じ言語で返してよい" in manager.pending_context
-    assert "実況の本筋は日本語に戻してください" in manager.pending_context
+    assert "視聴者コメント: alice さん「hello from Brazil!」" in manager.latest_viewer_context
+    assert "外国語なら" in manager.latest_viewer_context
+    assert "相手と同じ言語で返してよい" in manager.latest_viewer_context
+    assert "実況の本筋は日本語に戻してください" in manager.latest_viewer_context
 
 
 def test_join_bulk_context_requests_varied_welcome(app_module):
@@ -495,10 +537,10 @@ def test_join_bulk_context_requests_varied_welcome(app_module):
         [{"type": "join_bulk", "count": 2, "users": "alice, bob"}]
     )
 
-    assert "入室通知: 2人が入室しました。名前: alice, bob。" in manager.pending_context
-    assert "みなさんいらっしゃい" in manager.pending_context
-    assert "直近の発言と違う角度" in manager.pending_context
-    assert "画面の状況に絡める" in manager.pending_context
+    assert "入室通知: 2人が入室しました。名前: alice, bob。" in manager.latest_viewer_context
+    assert "みなさんいらっしゃい" in manager.latest_viewer_context
+    assert "直近の発言と違う角度" in manager.latest_viewer_context
+    assert "画面の状況に絡める" in manager.latest_viewer_context
 
 
 def test_build_system_prompt_asks_to_avoid_repeated_phrasing(app_module):

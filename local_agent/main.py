@@ -1,6 +1,7 @@
 import os
 import time
 import tempfile
+import threading
 
 from dotenv import load_dotenv
 import pygame
@@ -14,21 +15,63 @@ def log(message):
     print(f"[local_agent] {message}", flush=True)
 
 
-def play_audio(audio_bytes):
-    if not audio_bytes:
-        return
+class AudioPlayer:
+    def __init__(self, log_func=log):
+        self.log = log_func
+        self._lock = threading.Lock()
+        self._thread = None
+        self._stop_event = threading.Event()
 
-    log(f"Playing audio ({len(audio_bytes)} bytes)")
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as audio_file:
-        audio_file.write(audio_bytes)
-        audio_path = audio_file.name
+    def is_busy(self):
+        with self._lock:
+            return self._thread is not None and self._thread.is_alive()
 
-    pygame.mixer.music.load(audio_path)
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        time.sleep(0.05)
-    pygame.mixer.music.unload()
-    os.remove(audio_path)
+    def play(self, audio_bytes):
+        if not audio_bytes:
+            return False
+
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                self.log("Audio is still playing; skipping overlapping audio")
+                return False
+
+            self._stop_event.clear()
+            self._thread = threading.Thread(
+                target=self._play_audio,
+                args=(audio_bytes,),
+                daemon=True,
+            )
+            self._thread.start()
+            return True
+
+    def stop(self):
+        self._stop_event.set()
+        pygame.mixer.music.stop()
+        with self._lock:
+            thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=2)
+
+    def _play_audio(self, audio_bytes):
+        self.log(f"Playing audio ({len(audio_bytes)} bytes)")
+        audio_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as audio_file:
+                audio_file.write(audio_bytes)
+                audio_path = audio_file.name
+
+            pygame.mixer.music.load(audio_path)
+            pygame.mixer.music.play()
+            while pygame.mixer.music.get_busy() and not self._stop_event.is_set():
+                time.sleep(0.05)
+        finally:
+            pygame.mixer.music.stop()
+            pygame.mixer.music.unload()
+            if audio_path:
+                try:
+                    os.remove(audio_path)
+                except OSError as exc:
+                    self.log(f"Failed to remove temp audio file: {exc}")
 
 
 def main():
@@ -44,6 +87,7 @@ def main():
     capturer = MinecraftCapturer(window_title=window_title)
     client = CloudApiClient(cloud_url)
     pygame.mixer.init()
+    audio_player = AudioPlayer(log)
 
     start_result = client.start_session()
     log(f"Session start: {start_result}")
@@ -73,14 +117,15 @@ def main():
             if frame:
                 frame_count += 1
                 log(f"Sending frame #{frame_count} ({len(frame)} bytes)")
-                result = client.send_frame(frame)
+                result = client.send_frame(frame, playback_busy=audio_player.is_busy())
                 log(f"Cloud response: {result.get('status')}, comment={result.get('comment')!r}")
-                play_audio(result.get("audio_bytes"))
+                audio_player.play(result.get("audio_bytes"))
             elif time.time() - last_no_frame_log >= 10:
                 log("No Minecraft frame captured. Is the window visible and not minimized?")
                 last_no_frame_log = time.time()
             time.sleep(interval)
     finally:
+        audio_player.stop()
         stop_result = client.stop_session()
         log(f"Session stop: {stop_result}")
 

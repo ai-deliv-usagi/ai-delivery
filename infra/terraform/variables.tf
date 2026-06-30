@@ -71,7 +71,7 @@ variable "voicevox_speaker_id" {
 variable "voicevox_max_text_chars" {
   description = "Maximum text length sent to VOICEVOX synthesis."
   type        = number
-  default     = 240
+  default     = 200
 }
 
 variable "session_idle_timeout_seconds" {

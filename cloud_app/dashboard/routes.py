@@ -55,7 +55,8 @@ def register_routes(app, get_stream_manager, frame_store=None):
         if not stream_manager:
             return jsonify({"status": "accepted"})
 
-        result = stream_manager.process_frame(frame)
+        playback_busy = request.form.get("playback_busy", "").lower() in {"1", "true", "yes"}
+        result = stream_manager.process_frame(frame, playback_busy=playback_busy)
         audio = result.pop("audio", None)
         if audio:
             result["audio_base64"] = base64.b64encode(audio).decode("ascii")
