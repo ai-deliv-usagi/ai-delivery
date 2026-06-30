@@ -387,7 +387,9 @@ def test_build_system_prompt_applies_voice_settings_and_falls_back_to_normal(app
     normal = manager.personality_library["normal"]
     assert prompt.startswith(normal["prompt"])
     assert "# 共通ルール" in prompt
-    assert "出力は日本語のみ" in prompt
+    assert "通常の実況は日本語" in prompt
+    assert "視聴者コメントが外国語の場合" in prompt
+    assert "相手と同じ言語で返してよい" in prompt
     assert voice.current_speed == normal["speed"]
     assert voice.current_pitch == normal["pitch"]
 
@@ -470,6 +472,19 @@ def test_tiktok_status_event_is_logged(app_module):
     assert app_module.dashboard_data["logs"][-1].endswith(
         "TikTokLive [接続エラー] TikTokLive接続エラー: boom"
     )
+
+
+def test_comment_context_allows_short_same_language_replies(app_module):
+    manager, _voice = make_manager(app_module)
+
+    manager.handle_events(
+        [{"type": "comment", "user": "alice", "text": "hello from Brazil!"}]
+    )
+
+    assert "視聴者コメント: alice さん「hello from Brazil!」" in manager.pending_context
+    assert "外国語なら" in manager.pending_context
+    assert "相手と同じ言語で返してよい" in manager.pending_context
+    assert "実況の本筋は日本語に戻してください" in manager.pending_context
 
 
 def test_join_bulk_context_requests_varied_welcome(app_module):
