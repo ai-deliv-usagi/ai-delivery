@@ -17,6 +17,7 @@ class LocalTikTokListener:
         self.log = log or (lambda _message: None)
         self.client = TikTokLiveClient(unique_id=unique_id)
         self.event_queue = queue.Queue()
+        self._join_lock = threading.Lock()
         self.join_buffer = []
         self.join_seen_at = {}
         self.join_min_count = 3
@@ -157,16 +158,18 @@ class LocalTikTokListener:
         @self.client.on(JoinEvent)
         async def on_join(event):
             nickname = event.user.nickname
-            if nickname not in self.join_buffer:
-                self.join_buffer.append(nickname)
-            self.join_seen_at[nickname] = time.time()
+            with self._join_lock:
+                if nickname not in self.join_buffer:
+                    self.join_buffer.append(nickname)
+                self.join_seen_at[nickname] = time.time()
 
         if LeaveEvent is not None:
             @self.client.on(LeaveEvent)
             async def on_leave(event):
                 nickname = event.user.nickname
-                self.join_buffer = [user for user in self.join_buffer if user != nickname]
-                self.join_seen_at.pop(nickname, None)
+                with self._join_lock:
+                    self.join_buffer = [user for user in self.join_buffer if user != nickname]
+                    self.join_seen_at.pop(nickname, None)
 
         @self.client.on(GiftEvent)
         async def on_gift(event):
@@ -234,28 +237,29 @@ class LocalTikTokListener:
         while not self.event_queue.empty():
             events.append(self.event_queue.get_nowait())
 
-        now = time.time()
-        oldest_join_age = 0
-        if self.join_buffer:
-            oldest_join_age = max(
-                now - self.join_seen_at.get(user, now) for user in self.join_buffer
+        with self._join_lock:
+            now = time.time()
+            oldest_join_age = 0
+            if self.join_buffer:
+                oldest_join_age = max(
+                    now - self.join_seen_at.get(user, now) for user in self.join_buffer
+                )
+
+            should_flush_joins = (
+                len(self.join_buffer) >= self.join_min_count
+                or oldest_join_age >= self.join_flush_after_seconds
             )
 
-        should_flush_joins = (
-            len(self.join_buffer) >= self.join_min_count
-            or oldest_join_age >= self.join_flush_after_seconds
-        )
-
-        if should_flush_joins:
-            selected_users = self.join_buffer[: self.join_max_names]
-            users = ", ".join(selected_users)
-            count = len(selected_users)
-            events.append({"type": "join_bulk", "users": users, "count": count})
-            self.join_buffer = self.join_buffer[self.join_max_names :]
-            self.join_seen_at = {
-                user: seen_at
-                for user, seen_at in self.join_seen_at.items()
-                if user in self.join_buffer
-            }
+            if should_flush_joins:
+                selected_users = self.join_buffer[: self.join_max_names]
+                users = ", ".join(selected_users)
+                count = len(selected_users)
+                events.append({"type": "join_bulk", "users": users, "count": count})
+                self.join_buffer = self.join_buffer[self.join_max_names :]
+                self.join_seen_at = {
+                    user: seen_at
+                    for user, seen_at in self.join_seen_at.items()
+                    if user in self.join_buffer
+                }
 
         return events

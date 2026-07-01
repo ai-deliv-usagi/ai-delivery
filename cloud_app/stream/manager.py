@@ -74,6 +74,7 @@ class StreamManager:
         self.gift_support_streaks = {}
         self.gift_support_streak_seconds = 60.0
 
+        self._context_lock = threading.Lock()
         self.override_mode_id = None
         self.override_expiry = 0
         self.gift_queue = []
@@ -179,7 +180,8 @@ class StreamManager:
             self.override_expiry = now + self.jack_duration_seconds
             mode_name = self.personality_library[mode_id]["name"]
             self.add_log(f"強制介入: {mode_name}")
-            self.pending_context += f"\n# 手動介入: すぐに「{mode_name}」として反応してください。"
+            with self._context_lock:
+                self.pending_context += f"\n# 手動介入: すぐに「{mode_name}」として反応してください。"
             self.mark_state_dirty()
             self.save_state()
             return jsonify({"status": "success", "mode": mode_name})
@@ -208,8 +210,9 @@ class StreamManager:
         self.override_mode_id = None
         self.override_expiry = 0
         self.gift_queue = []
-        self.pending_context = ""
-        self.latest_viewer_context = ""
+        with self._context_lock:
+            self.pending_context = ""
+            self.latest_viewer_context = ""
         self.current_gen_id = 0
         self.recent_gift_events = {}
         self.gift_action_indexes = {tier: 0 for tier in GIFT_ACTIONS}
@@ -350,9 +353,10 @@ class StreamManager:
             return {"status": "busy"}
 
         sys_prompt = self.build_system_prompt(active_id)
-        current_context = self.build_generation_context()
-        self.pending_context = ""
-        self.latest_viewer_context = ""
+        with self._context_lock:
+            current_context = self.build_generation_context()
+            self.pending_context = ""
+            self.latest_viewer_context = ""
         self.mark_state_dirty()
         self.save_state()
         self.is_generating = True
@@ -413,7 +417,8 @@ class StreamManager:
                 self.mark_state_dirty()
 
     def set_latest_viewer_context(self, context):
-        self.latest_viewer_context = context
+        with self._context_lock:
+            self.latest_viewer_context = context
         self.mark_state_dirty()
 
     def build_generation_context(self):
@@ -529,7 +534,8 @@ class StreamManager:
                 f"ギフト受信 [{tier_label}]: {event['user']} さんから "
                 f"{gift_name}{count_suffix}{value_suffix}"
             )
-            self.pending_context += context
+            with self._context_lock:
+                self.pending_context += context
             self.mark_state_dirty()
             return
 
@@ -540,10 +546,11 @@ class StreamManager:
             f"({event['user']} さん)"
         )
         mode_name = self.personality_library[mode_id]["name"]
-        self.pending_context += context + (
-            f"\n# 固有演出: {event['user']} さんから {gift_name} を受信したため、"
-            f"次は「{mode_name}」に切り替わることを宣言してください。"
-        )
+        with self._context_lock:
+            self.pending_context += context + (
+                f"\n# 固有演出: {event['user']} さんから {gift_name} を受信したため、"
+                f"次は「{mode_name}」に切り替わることを宣言してください。"
+            )
         self.mark_state_dirty()
 
     def is_duplicate_gift_event(self, event, gift_key):
@@ -582,13 +589,15 @@ class StreamManager:
         self.override_expiry = now + self.jack_duration_seconds
         mode_name = self.personality_library[next_mode]["name"]
         self.add_log(f">>> 人格切替: {mode_name} ({gift_user} さん)")
-        self.pending_context += f"\n# システム: ここから人格を「{mode_name}」に切り替えてください。"
+        with self._context_lock:
+            self.pending_context += f"\n# システム: ここから人格を「{mode_name}」に切り替えてください。"
         self.mark_state_dirty()
 
     def return_to_normal_mode(self):
         mode_name = self.personality_library["normal"]["name"]
         self.add_log(">>> ジャック終了: 標準OSに戻ります")
-        self.pending_context += f"\n# システム: ここから人格を「{mode_name}」に戻してください。"
+        with self._context_lock:
+            self.pending_context += f"\n# システム: ここから人格を「{mode_name}」に戻してください。"
         self.override_mode_id = None
         self.mark_state_dirty()
 
@@ -614,9 +623,10 @@ class StreamManager:
             return
 
         sys_prompt = self.build_system_prompt(active_id)
-        current_context = self.build_generation_context()
-        self.pending_context = ""
-        self.latest_viewer_context = ""
+        with self._context_lock:
+            current_context = self.build_generation_context()
+            self.pending_context = ""
+            self.latest_viewer_context = ""
         self.mark_state_dirty()
         self.save_state()
         self.is_generating = True

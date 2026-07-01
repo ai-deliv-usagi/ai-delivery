@@ -15,6 +15,17 @@ def log(message):
     print(f"[local_agent] {message}", flush=True)
 
 
+def _event_sender_loop(tiktok_listener, client, log_func, stop_event):
+    while not stop_event.wait(0.2):
+        try:
+            events = tiktok_listener.fetch_events()
+            if events:
+                result = client.send_events(events)
+                log_func(f"Sent TikTok events: {result}")
+        except Exception as exc:
+            log_func(f"Failed to send TikTok events: {exc}")
+
+
 class AudioPlayer:
     def __init__(self, log_func=log):
         self.log = log_func
@@ -93,10 +104,17 @@ def main():
     log(f"Session start: {start_result}")
 
     tiktok_listener = None
+    stop_event = threading.Event()
     if tiktok_unique_id:
         tiktok_listener = LocalTikTokListener(unique_id=tiktok_unique_id, log=log)
         tiktok_listener.start()
         log(f"TikTokLive listener started: {tiktok_unique_id}")
+        threading.Thread(
+            target=_event_sender_loop,
+            args=(tiktok_listener, client, log, stop_event),
+            daemon=True,
+        ).start()
+        log("TikTok event sender thread started (0.2s interval)")
     else:
         log("TIKTOK_UNIQUE_ID is not set. TikTokLive listener is disabled.")
 
@@ -104,15 +122,6 @@ def main():
     frame_count = 0
     try:
         while True:
-            if tiktok_listener:
-                events = tiktok_listener.fetch_events()
-                if events:
-                    try:
-                        event_result = client.send_events(events)
-                        log(f"Sent TikTok events: {event_result}")
-                    except Exception as exc:
-                        log(f"Failed to send TikTok events: {exc}")
-
             frame = capturer.get_frame_bytes()
             if frame and not audio_player.is_busy():
                 frame_count += 1
@@ -125,6 +134,7 @@ def main():
                 last_no_frame_log = time.time()
             time.sleep(interval)
     finally:
+        stop_event.set()
         audio_player.stop()
         stop_result = client.stop_session()
         log(f"Session stop: {stop_result}")
