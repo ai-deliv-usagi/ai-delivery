@@ -235,7 +235,6 @@ def test_unknown_gift_gets_thanks_plus_improv_context(app_module):
     assert "お礼だけで終わらせない" in manager.pending_context
     assert "普段より少し大きく反応" in manager.pending_context
     assert "今回の追加演出" in manager.pending_context
-    assert "追加の課金やギフトを要求・催促する表現は禁止" in manager.pending_context
     assert app_module.dashboard_data["logs"][-1].endswith(
         "ギフト受信 [ミドル]: alice さんから Cap x3 / 30ダイヤ"
     )
@@ -446,17 +445,19 @@ def test_build_system_prompt_applies_voice_settings_and_falls_back_to_normal(app
     assert "# 共通ルール" in prompt
     assert "通常の実況は日本語" in prompt
     assert "視聴者コメントが外国語の場合" in prompt
-    assert "相手と同じ言語で返してよい" in prompt
+    assert "相手と同じ言語で一文返してよい" in prompt
     assert voice.current_speed == normal["speed"]
     assert voice.current_pitch == normal["pitch"]
 
 
-def test_speed_instruction_discourages_too_short_replies(app_module):
-    from cloud_app.stream.manager import SPEED_INSTRUCTION
+def test_common_rules_discourage_too_short_replies(app_module):
+    manager, _voice = make_manager(app_module)
 
-    assert "一息で読める自然な日本語" in SPEED_INSTRUCTION
-    assert "短すぎる相づち" in SPEED_INSTRUCTION
-    assert "同じ言い回しを続けない" in SPEED_INSTRUCTION
+    prompt = manager.build_system_prompt("normal")
+
+    assert "一息で読める短文" in prompt
+    assert "単語だけ、相づちだけ" in prompt
+    assert "同じ言い回しを繰り返さず" in prompt
 
 
 def test_refresh_dashboard_recalculates_timer(app_module):
@@ -612,9 +613,9 @@ def test_process_ai_task_speaks_generated_comment_and_resets_flag(app_module):
 
     manager.ai = types.SimpleNamespace(generate_comment=generate_comment)
 
-    manager.process_ai_task(b"image", "system", "speed", "context")
+    manager.process_ai_task(b"image", "system", "context")
 
-    assert calls["args"] == (b"image", "systemspeed", "context")
+    assert calls["args"] == (b"image", "system", "context")
     assert voice.spoken == ["generated comment"]
     assert manager.is_generating is False
     assert app_module.dashboard_data["logs"][-1].endswith("generated comment")
@@ -630,7 +631,7 @@ def test_process_ai_task_resets_flag_when_generation_fails(app_module):
     manager.ai = types.SimpleNamespace(generate_comment=generate_comment)
 
     try:
-        manager.process_ai_task(b"image", "system", "speed", "context")
+        manager.process_ai_task(b"image", "system", "context")
     except RuntimeError:
         pass
 

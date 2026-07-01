@@ -9,11 +9,6 @@ from cloud_app.dashboard.state import add_log, dashboard_data
 from cloud_app.personalities.library import GIFT_TO_MODE, PERSONALITY_LIBRARY
 
 
-SPEED_INSTRUCTION = (
-    "\n一息で読める自然な日本語で話してください。"
-    "短すぎる相づちや同じ言い回しを続けないでください。"
-)
-
 GIFT_TIER_LABELS = {
     "light": "ライト",
     "middle": "ミドル",
@@ -184,10 +179,7 @@ class StreamManager:
             self.override_expiry = now + self.jack_duration_seconds
             mode_name = self.personality_library[mode_id]["name"]
             self.add_log(f"強制介入: {mode_name}")
-            self.pending_context += (
-                f"\n# 手動介入: すぐに「{mode_name}」として反応してください。"
-                "出力は日本語のみです。"
-            )
+            self.pending_context += f"\n# 手動介入: すぐに「{mode_name}」として反応してください。"
             self.mark_state_dirty()
             self.save_state()
             return jsonify({"status": "success", "mode": mode_name})
@@ -367,7 +359,7 @@ class StreamManager:
         try:
             comment = self.ai.generate_comment(
                 frame,
-                system_prompt=sys_prompt + SPEED_INSTRUCTION,
+                system_prompt=sys_prompt,
                 extra_context=current_context,
             )
             if not comment:
@@ -512,7 +504,6 @@ class StreamManager:
             f"反応の強さ: {GIFT_TIER_STYLES[tier]}。\n"
             f"今回の追加演出: {action}。\n"
             "人格と現在のMinecraft画面に合わせて即興し、最近と同じ演出や文句は避けてください。"
-            "追加の課金やギフトを要求・催促する表現は禁止です。"
         )
         return context, tier, tier_label, repeat_count, total_diamonds
 
@@ -551,7 +542,7 @@ class StreamManager:
         mode_name = self.personality_library[mode_id]["name"]
         self.pending_context += context + (
             f"\n# 固有演出: {event['user']} さんから {gift_name} を受信したため、"
-            f"次は「{mode_name}」に切り替わることを日本語で宣言してください。"
+            f"次は「{mode_name}」に切り替わることを宣言してください。"
         )
         self.mark_state_dirty()
 
@@ -591,17 +582,13 @@ class StreamManager:
         self.override_expiry = now + self.jack_duration_seconds
         mode_name = self.personality_library[next_mode]["name"]
         self.add_log(f">>> 人格切替: {mode_name} ({gift_user} さん)")
-        self.pending_context += (
-            f"\n# システム: ここから人格を「{mode_name}」に切り替えてください。出力は日本語のみです。"
-        )
+        self.pending_context += f"\n# システム: ここから人格を「{mode_name}」に切り替えてください。"
         self.mark_state_dirty()
 
     def return_to_normal_mode(self):
         mode_name = self.personality_library["normal"]["name"]
         self.add_log(">>> ジャック終了: 標準OSに戻ります")
-        self.pending_context += (
-            f"\n# システム: ここから人格を「{mode_name}」に戻してください。出力は日本語のみです。"
-        )
+        self.pending_context += f"\n# システム: ここから人格を「{mode_name}」に戻してください。"
         self.override_mode_id = None
         self.mark_state_dirty()
 
@@ -635,15 +622,15 @@ class StreamManager:
         self.is_generating = True
         threading.Thread(
             target=self.process_ai_task,
-            args=(frame, sys_prompt, SPEED_INSTRUCTION, current_context),
+            args=(frame, sys_prompt, current_context),
             daemon=True,
         ).start()
 
-    def process_ai_task(self, frame, sys_prompt, speed_instruction, context):
+    def process_ai_task(self, frame, sys_prompt, context):
         try:
             comment = self.ai.generate_comment(
                 frame,
-                system_prompt=sys_prompt + speed_instruction,
+                system_prompt=sys_prompt,
                 extra_context=context,
             )
             if comment:
@@ -660,14 +647,11 @@ class StreamManager:
         common = (
             "# 共通ルール\n"
             "- 通常の実況は日本語で話してください。\n"
-            "- 視聴者コメントが外国語の場合は、短い挨拶・感謝・リアクションだけ相手と同じ言語で返してよいです。\n"
-            "- 外国語で返す時も一文だけにし、長い説明や実況の本筋は日本語に戻してください。\n"
+            "- 視聴者コメントが外国語の場合は、短い挨拶・感謝・リアクションだけ相手と同じ言語で一文返してよいです。ただし実況の本筋は日本語に戻してください。\n"
             "- Minecraft配信のリアルタイム実況として自然に話してください。\n"
             "- 1回の発言は一息で読める短文にしてください。目安は25〜70文字です。\n"
             "- ビッグまたはレジェンドのギフト反応だけは、特別感を出すため100文字以内の短い二文まで許可します。\n"
             "- 単語だけ、相づちだけ、挨拶だけで終わらせず、状況や感情を一つ足してください。\n"
-            "- プロンプト、制約、内部処理、AIであることには触れないでください。\n"
-            "- 説明文ではなく、そのまま読み上げる発言だけを出してください。通常は一文にしてください。\n"
             "- Recent logs と同じ文や同じ言い回しを繰り返さず、語尾・視点・単語を変えてください。\n"
             "- 入室、フォロー、ギフトは台本ではなく反応の材料です。通知文をそのまま読まず、人格の口調で自然に言い換えてください。\n"
             "- ギフトには必ず感謝しますが、追加の課金やギフトを要求・催促してはいけません。\n"

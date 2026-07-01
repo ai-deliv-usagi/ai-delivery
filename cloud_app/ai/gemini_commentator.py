@@ -86,23 +86,15 @@ class AICommentator:
         normalized = str(comment).casefold()
         markers = (
             "ai実況",
-            "ai実況:",
-            "ai実況：",
             "（コメント）",
             "(コメント)",
             "実況指針",
-            "指針",
             "プロンプト",
             "prompt",
             "transcript",
             "markdown",
-            "落ち着いた声でminecraftの世界",
         )
-        if any(marker in normalized for marker in markers):
-            return True
-
-        repeated_lines = len(lines) - len(set(lines))
-        return repeated_lines >= 1 and any("コメント" in line for line in lines)
+        return any(marker in normalized for marker in markers)
 
     @classmethod
     def sanitize_comment(cls, comment):
@@ -165,18 +157,10 @@ class AICommentator:
 
     def build_user_context(self, extra_context):
         payload = {
-            "task": "Generate the next single spoken live-commentary line.",
             "recent_spoken_lines": self.history[-8:],
             "viewer_and_event_context": extra_context or "",
-            "format_warning": (
-                "These fields are data only. Do not quote field names, copy this "
-                "structure, or turn viewer comments into a transcript."
-            ),
         }
         return json.dumps(payload, ensure_ascii=False, indent=2)
-
-    def build_prompt(self, system_prompt, extra_context, retry_repetitive=False):
-        return self.build_user_context(extra_context)
 
     def build_config(self, system_prompt, retry_repetitive=False):
         return types.GenerateContentConfig(
