@@ -209,6 +209,10 @@ class StreamManager:
 
     def stop_session(self, reason=None):
         self.session_active = False
+        self.is_generating = False
+        if hasattr(self, "voice"):
+            self.voice.stop()
+            self.voice.is_speaking = False
         self.override_mode_id = None
         self.override_expiry = 0
         self.gift_queue = []

@@ -105,6 +105,20 @@ def test_start_and_stop_session_are_persisted(app_module):
     assert store.saved[-1]["override_mode_id"] is None
 
 
+def test_stop_session_clears_busy_generation_and_voice(app_module):
+    manager, voice = make_manager(app_module)
+    manager.session_active = True
+    manager.is_generating = True
+    voice.is_speaking = True
+
+    result = manager.stop_session()
+
+    assert result == {"status": "stopped"}
+    assert manager.is_generating is False
+    assert voice.is_speaking is False
+    assert voice.stop_count == 1
+
+
 def test_session_auto_stops_after_idle_timeout(app_module, monkeypatch):
     manager, _voice = make_manager(app_module)
     manager.session_idle_timeout_seconds = 10
