@@ -233,3 +233,55 @@ def test_non_streakable_gift_event_is_not_in_progress(app_module):
     )
 
     assert LocalTikTokListener.is_streak_in_progress(event) is False
+
+
+def test_own_comment_is_silently_dropped(app_module):
+    listener = make_listener(app_module)
+    comment_handler = next(
+        handler
+        for event_type, handler in listener.client.handlers
+        if event_type.__name__ == "CommentEvent"
+    )
+
+    asyncio.run(comment_handler(types.SimpleNamespace(
+        user=types.SimpleNamespace(nickname="Example", unique_id="example"),
+        comment="hello",
+    )))
+
+    assert listener.event_queue.empty()
+
+
+def test_comment_with_unknown_unique_id_is_not_dropped(app_module):
+    listener = make_listener(app_module)
+    comment_handler = next(
+        handler
+        for event_type, handler in listener.client.handlers
+        if event_type.__name__ == "CommentEvent"
+    )
+
+    asyncio.run(comment_handler(types.SimpleNamespace(
+        user=types.SimpleNamespace(nickname="viewer", unique_id=""),
+        comment="nice",
+    )))
+
+    assert listener.fetch_events() == [
+        {"type": "comment", "user": "viewer", "text": "nice"}
+    ]
+
+
+def test_other_user_comment_is_enqueued(app_module):
+    listener = make_listener(app_module)
+    comment_handler = next(
+        handler
+        for event_type, handler in listener.client.handlers
+        if event_type.__name__ == "CommentEvent"
+    )
+
+    asyncio.run(comment_handler(types.SimpleNamespace(
+        user=types.SimpleNamespace(nickname="viewer", unique_id="viewer123"),
+        comment="good game",
+    )))
+
+    assert listener.fetch_events() == [
+        {"type": "comment", "user": "viewer", "text": "good game"}
+    ]

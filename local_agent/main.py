@@ -114,13 +114,13 @@ def main():
                         log(f"Failed to send TikTok events: {exc}")
 
             frame = capturer.get_frame_bytes()
-            if frame:
+            if frame and not audio_player.is_busy():
                 frame_count += 1
                 log(f"Sending frame #{frame_count} ({len(frame)} bytes)")
-                result = client.send_frame(frame, playback_busy=audio_player.is_busy())
+                result = client.send_frame(frame)
                 log(f"Cloud response: {result.get('status')}, comment={result.get('comment')!r}")
                 audio_player.play(result.get("audio_bytes"))
-            elif time.time() - last_no_frame_log >= 10:
+            elif not frame and time.time() - last_no_frame_log >= 10:
                 log("No Minecraft frame captured. Is the window visible and not minimized?")
                 last_no_frame_log = time.time()
             time.sleep(interval)

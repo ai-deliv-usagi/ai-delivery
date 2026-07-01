@@ -25,6 +25,11 @@ class LocalTikTokListener:
         self.thread = None
         self._setup_events()
 
+    def _is_own_user(self, user):
+        uid = str(getattr(user, "unique_id", "") or "").lstrip("@").casefold()
+        own = self.unique_id.lstrip("@").casefold()
+        return bool(uid) and bool(own) and uid == own
+
     def enqueue_status(self, status, message):
         labels = {
             "starting": "接続中",
@@ -143,6 +148,8 @@ class LocalTikTokListener:
 
         @self.client.on(CommentEvent)
         async def on_comment(event):
+            if self._is_own_user(event.user):
+                return
             self.event_queue.put(
                 {"type": "comment", "user": event.user.nickname, "text": event.comment}
             )

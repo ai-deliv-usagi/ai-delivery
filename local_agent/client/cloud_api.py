@@ -7,15 +7,10 @@ class CloudApiClient:
     def __init__(self, base_url):
         self.base_url = base_url.rstrip("/")
 
-    def send_frame(self, frame_bytes, playback_busy=False):
-        data = {}
-        if playback_busy:
-            data["playback_busy"] = "1"
-
+    def send_frame(self, frame_bytes):
         response = requests.post(
             f"{self.base_url}/api/frames",
             files={"frame": ("frame.jpg", frame_bytes, "image/jpeg")},
-            data=data,
             timeout=120,
         )
         response.raise_for_status()

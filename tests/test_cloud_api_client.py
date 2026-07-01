@@ -1,7 +1,7 @@
 import base64
 
 
-def test_send_frame_includes_playback_busy(monkeypatch):
+def test_send_frame_posts_jpeg_to_frames_endpoint(monkeypatch):
     from local_agent.client.cloud_api import CloudApiClient
 
     calls = {}
@@ -11,25 +11,20 @@ def test_send_frame_includes_playback_busy(monkeypatch):
             return None
 
         def json(self):
-            return {"status": "busy"}
+            return {"status": "ok"}
 
-    def post(url, files, data, timeout):
+    def post(url, files, timeout):
         calls["url"] = url
         calls["files"] = files
-        calls["data"] = data
         calls["timeout"] = timeout
         return Response()
 
     monkeypatch.setattr("local_agent.client.cloud_api.requests.post", post)
 
-    result = CloudApiClient("https://example.test").send_frame(
-        b"frame",
-        playback_busy=True,
-    )
+    result = CloudApiClient("https://example.test").send_frame(b"frame")
 
-    assert result == {"status": "busy"}
+    assert result == {"status": "ok"}
     assert calls["url"] == "https://example.test/api/frames"
-    assert calls["data"] == {"playback_busy": "1"}
     assert calls["files"]["frame"][1] == b"frame"
 
 
