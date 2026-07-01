@@ -8,7 +8,7 @@ class AICommentator:
     max_history = 12
     max_comment_chars = 140
     retry_similarity_threshold = 0.82
-    max_regeneration_attempts = 2
+    max_regeneration_attempts = 1
     topic_fatigue_threshold = 2
     topic_ngram_size = 4
     topic_repeat_threshold = 2
